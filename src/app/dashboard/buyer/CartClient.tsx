@@ -11,7 +11,7 @@ type Product = {
     id: string;
     name: string;
     sku: string;
-    basePrice: number;
+    basePrice?: number;
     tierPrice?: number | null;
     imageUrl?: string | null;
 };

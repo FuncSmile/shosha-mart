@@ -13,6 +13,7 @@ export async function getProductsForBuyer(tierId: string) {
                 name: products.name,
                 sku: products.sku,
                 tierPrice: tierPrices.price,
+                imageUrl: products.imageUrl,
                 // Do not expose basePrice to buyer
             })
             .from(products)
