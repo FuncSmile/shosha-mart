@@ -14,20 +14,39 @@ export default async function SuperAdminDashboard() {
         redirect("/dashboard");
     }
 
-    // Fetch all approved orders metrics
-    const approvedOrders = await db
-        .select({
-            id: orders.id,
-            totalAmount: orders.totalAmount,
-            status: orders.status,
-            tierName: tiers.name,
-            buyerName: users.branchName,
-        })
-        .from(orders)
-        .innerJoin(tiers, eq(orders.tierId, tiers.id))
-        .innerJoin(users, eq(orders.buyerId, users.id))
-        .where(inArray(orders.status, ["APPROVED_BY_TIER", "PROCESSED"]))
-        .orderBy(desc(orders.id));
+    // Fetch all approved orders metrics with relational data
+    const approvedOrdersData = await db.query.orders.findMany({
+        where: inArray(orders.status, ["APPROVED", "PACKING", "PROCESSED"]),
+        with: {
+            tier: true,
+            buyer: true,
+            items: {
+                with: {
+                    product: true,
+                },
+            },
+        },
+        orderBy: [desc(orders.createdAt)],
+    });
+
+    const approvedOrders = approvedOrdersData.map(o => ({
+        id: o.id,
+        totalAmount: o.totalAmount,
+        status: o.status,
+        tierName: o.tier.name,
+        buyerName: o.buyer.username,
+        branchName: o.buyer.branchName,
+        createdAt: o.createdAt,
+        items: o.items.map(item => ({
+            id: item.id,
+            name: item.product?.name || "Produk Terhapus",
+            sku: item.product?.sku || "-",
+            unit: item.product?.unit || "Pcs",
+            imageUrl: item.product?.imageUrl || null,
+            quantity: item.quantity,
+            price: item.priceAtPurchase,
+        })),
+    }));
 
     // Compute overall stats
     const totalApprovedOrdersCount = approvedOrders.length;

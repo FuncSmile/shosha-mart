@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth/session";
 import { getProductsForBuyer } from "@/app/actions/products";
 import { redirect } from "next/navigation";
-import CartClient from "./CartClient";
+import CatalogClient from "./CatalogClient";
 
 export default async function BuyerDashboard() {
     const session = await getSession();
@@ -14,12 +14,10 @@ export default async function BuyerDashboard() {
 
     return (
         <div className="container mx-auto py-8 px-4">
-            <h1 className="text-3xl font-bold mb-8">Katalog Produk</h1>
+            <h1 className="text-3xl font-bold mb-8 text-neutral-800 tracking-tight">Katalog Produk</h1>
 
-            <CartClient
+            <CatalogClient
                 initialProducts={products}
-                buyerId={session.id}
-                tierId={session.tierId}
             />
         </div>
     );

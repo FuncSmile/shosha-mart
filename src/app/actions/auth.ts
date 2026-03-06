@@ -53,6 +53,6 @@ export async function login(prevState: ActionState | null, formData: FormData): 
     } else if (user.role === "ADMIN_TIER") {
         redirect("/dashboard/admin-tier");
     } else {
-        redirect("/dashboard");
+        redirect("/dashboard/buyer");
     }
 }

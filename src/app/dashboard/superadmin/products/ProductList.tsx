@@ -16,6 +16,8 @@ type Product = {
     name: string;
     sku: string;
     basePrice: number;
+    stock: number;
+    unit: string;
     imageUrl: string | null;
 };
 
@@ -23,6 +25,8 @@ type FormDataState = {
     name: string;
     sku: string;
     basePrice: number;
+    stock: number;
+    unit: string;
     imageUrl: string;
     imageType: "upload" | "link";
     file: File | null;
@@ -30,7 +34,7 @@ type FormDataState = {
 };
 
 const initialFormState: FormDataState = {
-    name: "", sku: "", basePrice: 0, imageUrl: "", imageType: "link", file: null, previewUrl: ""
+    name: "", sku: "", basePrice: 0, stock: 0, unit: "Pcs", imageUrl: "", imageType: "link", file: null, previewUrl: ""
 };
 
 export default function ProductList({ initialProducts }: { initialProducts: Product[] }) {
@@ -74,6 +78,8 @@ export default function ProductList({ initialProducts }: { initialProducts: Prod
                 name: formData.name,
                 sku: formData.sku,
                 basePrice: formData.basePrice,
+                stock: formData.stock,
+                unit: formData.unit,
                 imageUrl: finalImageUrl || undefined
             };
 
@@ -108,6 +114,8 @@ export default function ProductList({ initialProducts }: { initialProducts: Prod
             name: product.name,
             sku: product.sku,
             basePrice: product.basePrice,
+            stock: product.stock,
+            unit: product.unit || "Pcs",
             imageUrl: product.imageUrl || "",
             imageType: product.imageUrl?.startsWith("https://") ? "link" : "upload", // simple heuristic
             file: null,
@@ -127,9 +135,19 @@ export default function ProductList({ initialProducts }: { initialProducts: Prod
                         <Label htmlFor="sku">SKU</Label>
                         <Input id="sku" value={formData.sku} onChange={(e) => setFormData(prev => ({ ...prev, sku: e.target.value }))} />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="basePrice">Base Price</Label>
+                            <Input id="basePrice" type="number" value={formData.basePrice} onChange={(e) => setFormData(prev => ({ ...prev, basePrice: Number(e.target.value) }))} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="unit">Satuan (Unit)</Label>
+                            <Input id="unit" placeholder="Pcs, Box, etc" value={formData.unit} onChange={(e) => setFormData(prev => ({ ...prev, unit: e.target.value }))} />
+                        </div>
+                    </div>
                     <div className="space-y-2">
-                        <Label htmlFor="basePrice">Base Price</Label>
-                        <Input id="basePrice" type="number" value={formData.basePrice} onChange={(e) => setFormData(prev => ({ ...prev, basePrice: Number(e.target.value) }))} />
+                        <Label htmlFor="stock">Stok (Jumlah Barang)</Label>
+                        <Input id="stock" type="number" value={formData.stock} onChange={(e) => setFormData(prev => ({ ...prev, stock: Number(e.target.value) }))} />
                     </div>
                 </div>
                 <div className="space-y-4">
@@ -222,7 +240,9 @@ export default function ProductList({ initialProducts }: { initialProducts: Prod
                             <TableHead className="w-[80px]">Gambar</TableHead>
                             <TableHead>Nama</TableHead>
                             <TableHead>SKU</TableHead>
+                            <TableHead>Satuan</TableHead>
                             <TableHead>Base Price</TableHead>
+                            <TableHead>Stok</TableHead>
                             <TableHead className="text-right">Aksi</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -247,7 +267,13 @@ export default function ProductList({ initialProducts }: { initialProducts: Prod
                                 </TableCell>
                                 <TableCell className="font-medium">{product.name}</TableCell>
                                 <TableCell className="text-muted-foreground">{product.sku}</TableCell>
+                                <TableCell>
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800">
+                                        {product.unit}
+                                    </span>
+                                </TableCell>
                                 <TableCell>Rp {product.basePrice.toLocaleString()}</TableCell>
+                                <TableCell>{product.stock}</TableCell>
                                 <TableCell className="text-right space-x-2">
                                     <Button variant="outline" size="sm" onClick={() => openEdit(product)}>Edit</Button>
                                     <Button variant="destructive" size="sm" onClick={() => handleDelete(product.id)}>Hapus</Button>
@@ -256,7 +282,7 @@ export default function ProductList({ initialProducts }: { initialProducts: Prod
                         ))}
                         {initialProducts.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={5} className="text-center py-8 text-neutral-500">
+                                <TableCell colSpan={6} className="text-center py-8 text-neutral-500">
                                     Belum ada produk.
                                 </TableCell>
                             </TableRow>

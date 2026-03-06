@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 export const tiers = sqliteTable("tiers", {
@@ -36,7 +36,10 @@ export const products = sqliteTable("products", {
   name: text("name").notNull(),
   sku: text("sku").notNull().unique(),
   basePrice: integer("base_price").notNull(), // Only SuperAdmin
+  stock: integer("stock").notNull().default(0), // Product stock
+  unit: text("unit").notNull().default("Pcs"),
   imageUrl: text("image_url"), // Optional image URL for hybrid image management
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
 export const productsRelations = relations(products, ({ many }) => ({
@@ -47,7 +50,8 @@ export const tierPrices = sqliteTable("tier_prices", {
   id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   productId: text("product_id").notNull().references(() => products.id),
   tierId: text("tier_id").notNull().references(() => tiers.id),
-  price: integer("price").notNull(),
+  price: integer("price"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
 });
 
 export const tierPricesRelations = relations(tierPrices, ({ one }) => ({
@@ -66,7 +70,7 @@ export const orders = sqliteTable("orders", {
   buyerId: text("buyer_id").notNull().references(() => users.id),
   tierId: text("tier_id").notNull().references(() => tiers.id),
   totalAmount: integer("total_amount").notNull(),
-  status: text("status").notNull(), // 'PENDING_APPROVAL', 'APPROVED_BY_TIER', 'REJECTED', 'PROCESSED'
+  status: text("status").notNull(), // 'PENDING_APPROVAL', 'APPROVED', 'PACKING', 'REJECTED', 'PROCESSED'
   rejectionReason: text("rejection_reason"),
   createdAt: integer("created_at").notNull().$defaultFn(() => Date.now()),
 });

@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { login, ActionState } from "@/app/actions/auth";
+import { toast } from "sonner";
 
 const initialState: ActionState = {
     error: undefined,
@@ -10,6 +11,12 @@ const initialState: ActionState = {
 
 export default function LoginPage() {
     const [state, formAction, isPending] = useActionState(login, initialState);
+
+    useEffect(() => {
+        if (state?.error) {
+            toast.error(state.error);
+        }
+    }, [state?.error]);
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-neutral-50 flex-col py-12 px-4 sm:px-6 lg:px-8">
@@ -52,15 +59,6 @@ export default function LoginPage() {
                             />
                         </div>
                     </div>
-
-                    {state?.error && (
-                        <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm font-medium border border-red-100 flex items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            {state.error}
-                        </div>
-                    )}
 
                     <div>
                         <button

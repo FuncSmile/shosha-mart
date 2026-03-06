@@ -23,7 +23,7 @@ export async function middleware(request: NextRequest) {
                 request.nextUrl.pathname.startsWith('/dashboard/admin-tier') ||
                 request.nextUrl.pathname.startsWith('/dashboard/superadmin')
             ) {
-                return NextResponse.redirect(new URL('/dashboard', request.url));
+                return NextResponse.redirect(new URL('/dashboard/buyer', request.url));
             }
         }
 
@@ -41,7 +41,7 @@ export async function middleware(request: NextRequest) {
         } else if (session.role === 'ADMIN_TIER') {
             return NextResponse.redirect(new URL('/dashboard/admin-tier', request.url));
         } else {
-            return NextResponse.redirect(new URL('/dashboard', request.url));
+            return NextResponse.redirect(new URL('/dashboard/buyer', request.url));
         }
     }
 
