@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 import { relations, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
@@ -21,7 +21,11 @@ export const users = sqliteTable("users", {
   role: text("role").notNull(), // 'SUPERADMIN', 'ADMIN_TIER', 'BUYER'
   tierId: text("tier_id").references(() => tiers.id), // Null for SuperAdmin
   branchName: text("branch_name"), // Only for BUYER
-});
+  createdBy: text("created_by"), // ID of Admin who created this BUYER
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+}, (users) => ({
+  createdByIndex: index("created_by_idx").on(users.createdBy),
+}));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   tier: one(tiers, {
@@ -72,8 +76,13 @@ export const orders = sqliteTable("orders", {
   totalAmount: integer("total_amount").notNull(),
   status: text("status").notNull(), // 'PENDING_APPROVAL', 'APPROVED', 'PACKING', 'REJECTED', 'PROCESSED'
   rejectionReason: text("rejection_reason"),
+  adminNotes: text("admin_notes"), // Optional notes for audit logs (e.g. "Approved by SuperAdmin")
   createdAt: integer("created_at").notNull().$defaultFn(() => Date.now()),
-});
+}, (orders) => ({
+  statusIdx: index("status_idx").on(orders.status),
+  buyerIdx: index("buyer_idx").on(orders.buyerId),
+  createdAtIdx: index("created_at_idx").on(orders.createdAt),
+}));
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   buyer: one(users, {

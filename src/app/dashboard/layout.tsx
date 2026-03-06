@@ -21,6 +21,7 @@ export default async function DashboardLayout({
     if (role === "SUPERADMIN") {
         menuItems = [
             { name: "Global Dashboard", href: "/dashboard/superadmin", iconName: "LayoutDashboard" },
+            { name: "Manajemen User", href: "/dashboard/superadmin/users", iconName: "Users" },
             { name: "Produk Master", href: "/dashboard/superadmin/products", iconName: "Package" },
             { name: "Manajemen Harga", href: "/dashboard/superadmin/pricing", iconName: "Settings" },
             { name: "Laporan Global", href: "/dashboard/superadmin/reports", iconName: "BarChart" },

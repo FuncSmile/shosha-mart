@@ -10,6 +10,7 @@ import { createProduct, updateProduct, deleteProduct } from "@/app/actions/produ
 import { uploadImageAction } from "@/app/actions/upload";
 import Image from "next/image";
 import { ImageIcon } from "lucide-react";
+import { ImportProductDialog } from "./ImportProductDialog";
 
 type Product = {
     id: string;
@@ -216,7 +217,8 @@ export default function ProductList({ initialProducts }: { initialProducts: Prod
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+                <ImportProductDialog />
                 <Dialog open={isAddOpen} onOpenChange={(open) => {
                     setIsAddOpen(open);
                     if (!open) setFormData(initialFormState);

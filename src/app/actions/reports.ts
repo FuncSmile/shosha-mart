@@ -2,9 +2,10 @@
 
 import { db } from "@/lib/db";
 import { orders, orderItems, products, users, tiers } from "@/lib/db/schema";
-import { eq, and, sql, desc, gte, lte } from "drizzle-orm";
+import { eq, and, sql, desc, gte, lte, or, inArray } from "drizzle-orm";
 
 export async function getTierMonthlyReport(tierId: string, month: number, year: number) {
+    // ... rest truncated for replacement below
     try {
         const startDate = new Date(year, month - 1, 1).getTime();
         const endDate = new Date(year, month, 0, 23, 59, 59, 999).getTime();
@@ -85,5 +86,142 @@ export async function getGlobalAnalytics() {
     } catch (error) {
         console.error("Failed to fetch global analytics:", error);
         return { tierComparison: [], topBranches: [] };
+    }
+}
+
+export async function getReportData({
+    startDate,
+    endDate,
+    role,
+    adminId,
+}: {
+    startDate: number;
+    endDate: number;
+    role: string;
+    adminId?: string;
+}) {
+    try {
+        let ordersQuery = db
+            .select({
+                orderId: orders.id,
+                totalAmount: orders.totalAmount,
+                createdAt: orders.createdAt,
+                buyerName: users.branchName,
+                buyerUsername: users.username,
+            })
+            .from(orders)
+            .innerJoin(users, eq(orders.buyerId, users.id))
+            .where(
+                and(
+                    or(eq(orders.status, "PROCESSED"), eq(orders.status, "PACKING"), eq(orders.status, "SUCCESS")),
+                    gte(orders.createdAt, startDate),
+                    lte(orders.createdAt, endDate)
+                )
+            );
+
+        if (role === "ADMIN_TIER" && adminId) {
+            ordersQuery = db
+                .select({
+                    orderId: orders.id,
+                    totalAmount: orders.totalAmount,
+                    createdAt: orders.createdAt,
+                    buyerName: users.branchName,
+                    buyerUsername: users.username,
+                })
+                .from(orders)
+                .innerJoin(users, eq(orders.buyerId, users.id))
+                .where(
+                    and(
+                        or(eq(orders.status, "PROCESSED"), eq(orders.status, "PACKING"), eq(orders.status, "SUCCESS")),
+                        gte(orders.createdAt, startDate),
+                        lte(orders.createdAt, endDate),
+                        eq(users.createdBy, adminId)
+                    )
+                );
+        }
+
+        const filteredOrders = await ordersQuery;
+
+        if (filteredOrders.length === 0) {
+            return {
+                success: true,
+                totalRevenue: 0,
+                completedOrders: 0,
+                topProducts: [],
+                dailySales: [],
+                transactionList: []
+            };
+        }
+
+        const orderIds = filteredOrders.map(o => o.orderId);
+
+        const itemsQuery = await db
+            .select({
+                orderId: orderItems.orderId,
+                productName: products.name,
+                unit: products.unit,
+                quantity: orderItems.quantity,
+                price: orderItems.priceAtPurchase,
+            })
+            .from(orderItems)
+            .innerJoin(products, eq(orderItems.productId, products.id))
+            .where(inArray(orderItems.orderId, orderIds));
+
+        let totalRevenue = 0;
+        let completedOrders = filteredOrders.length;
+        const productsMap = new Map<string, number>();
+        const salesByDate = new Map<string, number>();
+        const transactions: any[] = [];
+
+        for (const order of filteredOrders) {
+            totalRevenue += order.totalAmount;
+
+            const dateStr = new Date(order.createdAt).toISOString().split('T')[0];
+            salesByDate.set(dateStr, (salesByDate.get(dateStr) || 0) + order.totalAmount);
+
+            const matchedItems = itemsQuery.filter(i => i.orderId === order.orderId);
+            for (const item of matchedItems) {
+                productsMap.set(item.productName, (productsMap.get(item.productName) || 0) + item.quantity);
+
+                transactions.push({
+                    date: dateStr,
+                    buyerName: order.buyerName || order.buyerUsername,
+                    productName: item.productName,
+                    unit: item.unit,
+                    quantity: item.quantity,
+                    totalPrice: item.quantity * item.price,
+                });
+            }
+        }
+
+        const topProducts = Array.from(productsMap.entries())
+            .map(([name, quantity]) => ({ name, quantity }))
+            .sort((a, b) => b.quantity - a.quantity)
+            .slice(0, 5);
+
+        const dailySales = Array.from(salesByDate.entries())
+            .map(([date, revenue]) => ({ date, revenue }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+
+        transactions.sort((a, b) => b.date.localeCompare(a.date));
+
+        return {
+            success: true,
+            totalRevenue,
+            completedOrders,
+            topProducts,
+            dailySales,
+            transactionList: transactions,
+        };
+    } catch (error) {
+        console.error("Failed to fetch report data:", error);
+        return {
+            success: false,
+            totalRevenue: 0,
+            completedOrders: 0,
+            topProducts: [],
+            dailySales: [],
+            transactionList: []
+        };
     }
 }

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { orders, orderItems, products } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { getSession } from "@/lib/auth/session";
 
 export async function submitOrder(
     buyerId: string,
@@ -75,9 +76,19 @@ export async function submitOrder(
 
 export async function approveOrder(orderId: string) {
     try {
+        const session = await getSession();
+        if (!session || (session.role !== "ADMIN_TIER" && session.role !== "SUPERADMIN")) {
+            return { success: false, error: "Akses ditolak." };
+        }
+
+        const adminNotes = session.role === "SUPERADMIN" ? "Approved by SuperAdmin" : null;
+
         await db
             .update(orders)
-            .set({ status: "APPROVED" })
+            .set({
+                status: "APPROVED",
+                ...(adminNotes ? { adminNotes } : {})
+            })
             .where(eq(orders.id, orderId));
 
         revalidatePath("/dashboard/admin-tier");
@@ -90,16 +101,23 @@ export async function approveOrder(orderId: string) {
 
 export async function rejectOrder(orderId: string, reason: string) {
     try {
+        const session = await getSession();
+        if (!session || (session.role !== "ADMIN_TIER" && session.role !== "SUPERADMIN")) {
+            return { success: false, error: "Akses ditolak." };
+        }
+
         if (!reason || reason.trim() === "") {
             return { error: "Alasan pembatalan harus diisi" };
         }
+
+        const finalReason = session.role === "SUPERADMIN" ? `[SuperAdmin]: ${reason}` : reason;
 
         await db.transaction(async (tx) => {
             await tx
                 .update(orders)
                 .set({
                     status: "REJECTED",
-                    rejectionReason: reason
+                    rejectionReason: finalReason
                 })
                 .where(eq(orders.id, orderId));
 
@@ -126,6 +144,11 @@ export async function rejectOrder(orderId: string, reason: string) {
 
 export async function packOrder(orderId: string) {
     try {
+        const session = await getSession();
+        if (!session || session.role !== "SUPERADMIN") {
+            return { success: false, error: "Akses ditolak." };
+        }
+
         await db
             .update(orders)
             .set({ status: "PACKING" })
@@ -140,6 +163,11 @@ export async function packOrder(orderId: string) {
 
 export async function processOrder(orderId: string) {
     try {
+        const session = await getSession();
+        if (!session || session.role !== "SUPERADMIN") {
+            return { success: false, error: "Akses ditolak." };
+        }
+
         await db
             .update(orders)
             .set({ status: "PROCESSED" })
@@ -150,5 +178,38 @@ export async function processOrder(orderId: string) {
         return { success: true, message: "Pesanan berhasil diselesaikan!" };
     } catch (error) {
         return { success: false, error: "Gagal memproses pesanan." };
+    }
+}
+
+export async function bypassDeleteOrder(orderId: string) {
+    try {
+        const session = await getSession();
+        if (!session || session.role !== "SUPERADMIN") {
+            return { success: false, error: "Hanya SuperAdmin yang dapat menghapus pesanan." };
+        }
+
+        await db.transaction(async (tx) => {
+            // Restore stock before deleting items
+            const items = await tx.select({ productId: orderItems.productId, quantity: orderItems.quantity })
+                .from(orderItems)
+                .where(eq(orderItems.orderId, orderId));
+
+            for (const item of items) {
+                await tx.update(products)
+                    .set({ stock: sql`${products.stock} + ${item.quantity}` })
+                    .where(eq(products.id, item.productId));
+            }
+
+            // Delete order items
+            await tx.delete(orderItems).where(eq(orderItems.orderId, orderId));
+
+            // Delete order 
+            await tx.delete(orders).where(eq(orders.id, orderId));
+        });
+
+        revalidatePath("/dashboard/superadmin");
+        return { success: true, message: "Pesanan berhasil dihapus secara permanen!" };
+    } catch (error) {
+        return { success: false, error: "Gagal menghapus pesanan." };
     }
 }

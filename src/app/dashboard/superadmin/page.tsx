@@ -4,8 +4,11 @@ import { orders, users, tiers } from "@/lib/db/schema";
 import { eq, inArray, sql, desc } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart, Users, ShoppingCart } from "lucide-react";
+import { Users } from "lucide-react";
 import FulfillmentClient from "./FulfillmentClient";
+import { Suspense } from "react";
+import DashboardAnalytics from "@/components/dashboard/DashboardAnalytics";
+import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 
 export default async function SuperAdminDashboard() {
     const session = await getSession();
@@ -14,9 +17,8 @@ export default async function SuperAdminDashboard() {
         redirect("/dashboard");
     }
 
-    // Fetch all approved orders metrics with relational data
+    // Fetch all orders with relational data for SuperAdmin Management
     const approvedOrdersData = await db.query.orders.findMany({
-        where: inArray(orders.status, ["APPROVED", "PACKING", "PROCESSED"]),
         with: {
             tier: true,
             buyer: true,
@@ -37,6 +39,7 @@ export default async function SuperAdminDashboard() {
         buyerName: o.buyer.username,
         branchName: o.buyer.branchName,
         createdAt: o.createdAt,
+        adminNotes: o.adminNotes, // Include adminNotes
         items: o.items.map(item => ({
             id: item.id,
             name: item.product?.name || "Produk Terhapus",
@@ -48,56 +51,35 @@ export default async function SuperAdminDashboard() {
         })),
     }));
 
-    // Compute overall stats
-    const totalApprovedOrdersCount = approvedOrders.length;
-    const totalSalesVolume = approvedOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-
-    // Users count
     const totalUsersResult = await db.select({ count: sql<number>`count(*)` }).from(users);
     const totalUsers = totalUsersResult[0].count;
 
     return (
         <div className="space-y-8">
-            <div>
-                <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Dashboard Utama</h1>
-                <p className="text-neutral-500">Ringkasan performa seluruh tier dan total penjualan yang disetujui.</p>
-            </div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Dashboard Utama</h1>
+                    <p className="text-neutral-500">Ringkasan performa seluruh tier dan total penjualan yang disetujui.</p>
+                </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-neutral-500">Total Penjualan</CardTitle>
-                        <BarChart className="h-4 w-4 text-neutral-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">Rp {totalSalesVolume.toLocaleString("id-ID")}</div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-neutral-500">Pesanan Disetujui</CardTitle>
-                        <ShoppingCart className="h-4 w-4 text-neutral-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{totalApprovedOrdersCount}</div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-neutral-500">Total Pengguna</CardTitle>
+                <Card className="w-full md:w-auto">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 p-4">
+                        <CardTitle className="text-sm font-medium text-neutral-500 mr-8">Total Pengguna Aktif</CardTitle>
                         <Users className="h-4 w-4 text-neutral-400" />
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="p-4 pt-0">
                         <div className="text-2xl font-bold">{totalUsers}</div>
                     </CardContent>
                 </Card>
             </div>
 
-            <Card>
+            <Suspense fallback={<DashboardSkeleton />}>
+                <DashboardAnalytics role="SUPERADMIN" />
+            </Suspense>
+
+            <Card className="mt-12">
                 <CardHeader>
-                    <CardTitle>Riwayat Pesanan Disetujui (Konsolidasi)</CardTitle>
+                    <CardTitle>Manajemen Pesanan Keseluruhan</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <FulfillmentClient orders={approvedOrders} />

@@ -4,6 +4,9 @@ import { orders } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import ApprovalClient from "./ApprovalClient";
+import { Suspense } from "react";
+import DashboardAnalytics from "@/components/dashboard/DashboardAnalytics";
+import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 
 export default async function AdminTierDashboard() {
     const session = await getSession();
@@ -48,7 +51,14 @@ export default async function AdminTierDashboard() {
     return (
         <div className="container mx-auto py-8 px-4">
             <h1 className="text-3xl font-bold mb-8">Persetujuan Pesanan (Admin Tier)</h1>
-            <ApprovalClient initialOrders={formattedOrders} />
+
+            <Suspense fallback={<DashboardSkeleton />}>
+                <DashboardAnalytics role="ADMIN_TIER" />
+            </Suspense>
+
+            <div className="mt-12">
+                <ApprovalClient initialOrders={formattedOrders} />
+            </div>
         </div>
     );
 }
