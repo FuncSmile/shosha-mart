@@ -88,7 +88,7 @@ export async function getAnalyticsData(): Promise<AnalyticsSummary | null> {
         .innerJoin(validOrdersQuery, eq(orderItems.orderId, sql`${validOrdersQuery.id}`))
         .innerJoin(products, eq(orderItems.productId, products.id))
         .groupBy(products.id, products.name)
-        .orderBy(desc(sql`totalRevenue`))
+        .orderBy(desc(sql`sum(${orderItems.quantity} * ${orderItems.priceAtPurchase})`))
         .limit(5);
 
     // 3. Sales Trend (Last 7 Days approximation using date mapping)
@@ -101,8 +101,8 @@ export async function getAnalyticsData(): Promise<AnalyticsSummary | null> {
     })
         .from(orders)
         .innerJoin(validOrdersQuery, eq(orders.id, sql`${validOrdersQuery.id}`))
-        .groupBy(sql`date`)
-        .orderBy(sql`date`)
+        .groupBy(sql`date(${validOrdersQuery.createdAt} / 1000, 'unixepoch')`)
+        .orderBy(sql`date(${validOrdersQuery.createdAt} / 1000, 'unixepoch')`)
         .limit(30);
 
     return {
