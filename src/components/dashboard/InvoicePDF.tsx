@@ -38,12 +38,12 @@ const styles = StyleSheet.create({
         width: "35%",
     },
     shopName: {
-        fontSize: 12, // More compact
+        fontSize: 14, // More compact
         fontWeight: "bold",
         marginBottom: 2,
     },
     shopAddress: {
-        fontSize: 7,
+        fontSize: 10,
         lineHeight: 1.1,
     },
     invoiceTitleContainer: {
@@ -70,12 +70,12 @@ const styles = StyleSheet.create({
     infoLabel: {
         width: "40%",
         color: "#333",
-        fontSize: 8,
+        fontSize: 12,
     },
     infoValue: {
         width: "60%",
         fontWeight: "bold",
-        fontSize: 8,
+        fontSize: 12,
     },
     table: {
         marginTop: 5, // Reduced from 10
@@ -169,13 +169,13 @@ const styles = StyleSheet.create({
     terbilang: {
         marginTop: 5,
         fontStyle: "italic",
-        fontSize: 8,
+        fontSize: 10,
         color: "#333",
     },
     signatureBox: {
         width: "25%",
         textAlign: "center",
-        fontSize: 8,
+        fontSize: 10,
     },
     signatureLabel: {
         marginBottom: 25, // Space for sign
@@ -268,11 +268,11 @@ export const InvoicePDF = ({ order, paperSize = 'full' }: InvoiceProps) => {
                         <View style={styles.tableRow} key={item.id} wrap={false}>
                             <View style={styles.tableCell}>
                                 <Text>{item.name}</Text>
-                                <Text style={{ fontSize: 7, color: "#333" }}>{item.sku}</Text>
+                                <Text style={{ fontSize: 10, color: "#333" }}>{item.sku}</Text>
                             </View>
                             <View style={styles.tableCellSmall}>
                                 <Text>{formatCurrency(item.price)}</Text>
-                                <Text style={{ fontSize: 6 }}>/{item.unit || "Pcs"}</Text>
+                                <Text style={{ fontSize: 10 }}>/{item.unit || "Pcs"}</Text>
                             </View>
                             <View style={styles.tableCellSmall}><Text>{item.quantity}</Text></View>
                             <View style={styles.tableCellRight}><Text>{formatCurrency(item.price * item.quantity)}</Text></View>
