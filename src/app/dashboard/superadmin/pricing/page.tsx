@@ -16,7 +16,8 @@ export default async function PricingPage(
     }
 
     const page = typeof searchParams?.page === 'string' ? parseInt(searchParams.page) : 1;
-    const { products, totalCount } = await getAllProducts(page);
+    const search = typeof searchParams?.q === 'string' ? searchParams.q : undefined;
+    const { products, totalCount } = await getAllProducts(page, 10, search);
     const tiers = await getAllTiers();
     const existingPrices = await db.select().from(tierPrices);
 

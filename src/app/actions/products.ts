@@ -124,19 +124,29 @@ export async function deleteProduct(id: string) {
     }
 }
 
-export async function getAllProducts(page: number = 1, limit: number = 10) {
+export async function getAllProducts(page: number = 1, limit: number = 10, search?: string) {
     try {
         const offset = (page - 1) * limit;
+
+        let whereClause: any = undefined;
+        if (search) {
+            whereClause = or(
+                sql`LOWER(${products.name}) LIKE ${`%${search.toLowerCase()}%`}`,
+                sql`LOWER(${products.sku}) LIKE ${`%${search.toLowerCase()}%`}`
+            );
+        }
 
         const allProducts = await db
             .select()
             .from(products)
+            .where(whereClause)
             .limit(limit)
             .offset(offset);
 
         const [countResult] = await db
             .select({ count: sql<number>`count(*)` })
-            .from(products);
+            .from(products)
+            .where(whereClause);
 
         return {
             products: allProducts,

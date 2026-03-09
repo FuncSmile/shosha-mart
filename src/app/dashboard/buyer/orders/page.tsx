@@ -1,23 +1,39 @@
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { orders } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { orders, orderItems, products } from "@/lib/db/schema";
+import { eq, desc, and, or, sql, like } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
 
 import OrderDetail from "@/components/dashboard/OrderDetail";
 import ReorderButton from "./ReorderButton";
 
-export default async function BuyerOrdersPage() {
+export default async function BuyerOrdersPage(
+    props: { searchParams?: Promise<{ [key: string]: string | string[] | undefined }> }
+) {
+    const searchParams = await props.searchParams;
     const session = await getSession();
     if (!session || session.role !== "BUYER") {
         redirect("/login");
     }
 
+    const searchQuery = typeof searchParams?.q === "string" ? searchParams.q : "";
+
+    // For complex search (like by product name inside order), we might need a more complex query
+    // But for now let's support searching by Order ID or Status, and if we want product name, we should join
+
     const myOrdersData = await db.query.orders.findMany({
-        where: eq(orders.buyerId, session.id),
+        where: and(
+            eq(orders.buyerId, session.id),
+            searchQuery ? or(
+                like(orders.id, `%${searchQuery}%`),
+                like(orders.status, `%${searchQuery.toUpperCase()}%`)
+            ) : undefined
+        ),
         with: {
             items: {
                 with: {
@@ -62,7 +78,18 @@ export default async function BuyerOrdersPage() {
 
     return (
         <div className="container mx-auto py-8 px-4">
-            <h1 className="text-3xl font-bold mb-8">Riwayat Pesanan</h1>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                <h1 className="text-3xl font-bold">Riwayat Pesanan</h1>
+                <form action="" method="GET" className="relative w-full md:w-96">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                    <Input
+                        name="q"
+                        placeholder="Cari ID Pesanan atau Status..."
+                        className="pl-9"
+                        defaultValue={searchQuery}
+                    />
+                </form>
+            </div>
 
             <div className="space-y-4">
                 {myOrders.map((order) => (

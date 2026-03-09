@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,10 @@ import { Label } from "@/components/ui/label";
 import { createProduct, updateProduct, deleteProduct } from "@/app/actions/products";
 import { uploadImageAction } from "@/app/actions/upload";
 import Image from "next/image";
-import { ImageIcon } from "lucide-react";
+import { ImageIcon, Search } from "lucide-react";
 import { ImportProductDialog } from "./ImportProductDialog";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Pagination } from "@/components/ui/Pagination";
 
 type Product = {
     id: string;
@@ -38,8 +40,6 @@ const initialFormState: FormDataState = {
     name: "", sku: "", basePrice: 0, stock: 0, unit: "Pcs", imageUrl: "", imageType: "link", file: null, previewUrl: ""
 };
 
-import { Pagination } from "@/components/ui/Pagination";
-
 export default function ProductList({
     initialProducts,
     totalCount,
@@ -49,6 +49,10 @@ export default function ProductList({
     totalCount: number,
     currentPage: number
 }) {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
+
     const totalPages = Math.ceil(totalCount / 10);
 
     const [isPending, startTransition] = useTransition();
@@ -56,6 +60,25 @@ export default function ProductList({
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [formData, setFormData] = useState<FormDataState>(initialFormState);
     const [uploading, setUploading] = useState(false);
+
+    const updateFilters = (q?: string) => {
+        const params = new URLSearchParams(searchParams.toString());
+        if (q !== undefined) {
+            if (q) params.set("q", q);
+            else params.delete("q");
+        }
+        params.set("page", "1");
+        router.push(`/dashboard/superadmin/products?${params.toString()}`);
+    };
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (searchQuery !== (searchParams.get("q") || "")) {
+                updateFilters(searchQuery);
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -229,22 +252,33 @@ export default function ProductList({
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-end gap-2">
-                <ImportProductDialog />
-                <Dialog open={isAddOpen} onOpenChange={(open) => {
-                    setIsAddOpen(open);
-                    if (!open) setFormData(initialFormState);
-                }}>
-                    <DialogTrigger asChild>
-                        <Button>Tambah Produk</Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                            <DialogTitle>Tambah Produk Baru</DialogTitle>
-                        </DialogHeader>
-                        {renderProductForm(false)}
-                    </DialogContent>
-                </Dialog>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="relative w-full md:w-96">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                    <Input
+                        placeholder="Cari nama produk atau SKU..."
+                        className="pl-9"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+                <div className="flex items-center gap-2">
+                    <ImportProductDialog />
+                    <Dialog open={isAddOpen} onOpenChange={(open) => {
+                        setIsAddOpen(open);
+                        if (!open) setFormData(initialFormState);
+                    }}>
+                        <DialogTrigger asChild>
+                            <Button>Tambah Produk</Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                                <DialogTitle>Tambah Produk Baru</DialogTitle>
+                            </DialogHeader>
+                            {renderProductForm(false)}
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </div>
 
             <div className="rounded-md border bg-card">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,14 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { upsertTierPrice } from "@/app/actions/pricing";
 import { Switch } from "@/components/ui/switch";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Pagination } from "@/components/ui/Pagination";
 
 type Product = { id: string; name: string; sku: string; basePrice: number };
 type Tier = { id: string; name: string };
 type TierPrice = { id: string; productId: string; tierId: string; price: number | null; isActive: boolean };
-
-import { Pagination } from "@/components/ui/Pagination";
 
 export default function PricingList({
     products,
@@ -30,11 +30,34 @@ export default function PricingList({
     totalCount: number;
     currentPage: number;
 }) {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
+
     const totalPages = Math.ceil(totalCount / 10);
 
     const [isPending, startTransition] = useTransition();
     const [editing, setEditing] = useState<{ product: Product; tier: Tier } | null>(null);
     const [price, setPrice] = useState<string>("");
+
+    const updateFilters = (q?: string) => {
+        const params = new URLSearchParams(searchParams.toString());
+        if (q !== undefined) {
+            if (q) params.set("q", q);
+            else params.delete("q");
+        }
+        params.set("page", "1");
+        router.push(`/dashboard/superadmin/pricing?${params.toString()}`);
+    };
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (searchQuery !== (searchParams.get("q") || "")) {
+                updateFilters(searchQuery);
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     const getTierData = (productId: string, tierId: string) => {
         const tp = initialPrices.find(p => p.productId === productId && p.tierId === tierId);
@@ -80,59 +103,70 @@ export default function PricingList({
     };
 
     return (
-        <div className="rounded-md border bg-card overflow-x-auto">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead>Produk (Base Price)</TableHead>
-                        {tiers.map(tier => (
-                            <TableHead key={tier.id} className="text-center">{tier.name}</TableHead>
-                        ))}
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {products.map(product => (
-                        <TableRow key={product.id}>
-                            <TableCell className="font-medium whitespace-nowrap">
-                                <div>{product.name}</div>
-                                <div className="text-xs text-muted-foreground">Base: Rp {product.basePrice.toLocaleString()}</div>
-                            </TableCell>
-                            {tiers.map(tier => {
-                                const data = getTierData(product.id, tier.id);
-                                return (
-                                    <TableCell key={tier.id}>
-                                        <div className="flex flex-col items-center gap-2">
-                                            <div className="flex items-center gap-2">
-                                                <Switch
-                                                    checked={data.isActive}
-                                                    onCheckedChange={() => toggleActive(product, tier, data.isActive)}
-                                                    disabled={isPending}
-                                                />
-                                                <span className="text-[10px] font-medium uppercase">
-                                                    {data.isActive ? "Aktif" : "Non-aktif"}
-                                                </span>
-                                            </div>
-                                            <button
-                                                onClick={() => openEdit(product, tier)}
-                                                className={`hover:underline text-sm font-semibold ${!data.isActive ? 'opacity-50' : ''}`}
-                                            >
-                                                {data.price
-                                                    ? `Rp ${data.price.toLocaleString()}`
-                                                    : <span className="text-muted-foreground italic text-xs">Base: Rp {product.basePrice.toLocaleString()}</span>
-                                                }
-                                            </button>
-                                        </div>
-                                    </TableCell>
-                                );
-                            })}
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-            <div className="p-4 border-t">
-                <Pagination totalPages={totalPages} currentPage={currentPage} />
+        <div className="space-y-4">
+            <div className="relative w-full md:w-96">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                <Input
+                    placeholder="Cari produk atau SKU..."
+                    className="pl-9"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
             </div>
 
+            <div className="rounded-md border bg-card overflow-x-auto">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Produk (Base Price)</TableHead>
+                            {tiers.map(tier => (
+                                <TableHead key={tier.id} className="text-center">{tier.name}</TableHead>
+                            ))}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {products.map(product => (
+                            <TableRow key={product.id}>
+                                <TableCell className="font-medium whitespace-nowrap">
+                                    <div>{product.name}</div>
+                                    <div className="text-xs text-muted-foreground">Base: Rp {product.basePrice.toLocaleString()}</div>
+                                </TableCell>
+                                {tiers.map(tier => {
+                                    const data = getTierData(product.id, tier.id);
+                                    return (
+                                        <TableCell key={tier.id}>
+                                            <div className="flex flex-col items-center gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    <Switch
+                                                        checked={data.isActive}
+                                                        onCheckedChange={() => toggleActive(product, tier, data.isActive)}
+                                                        disabled={isPending}
+                                                    />
+                                                    <span className="text-[10px] font-medium uppercase">
+                                                        {data.isActive ? "Aktif" : "Non-aktif"}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => openEdit(product, tier)}
+                                                    className={`hover:underline text-sm font-semibold ${!data.isActive ? 'opacity-50' : ''}`}
+                                                >
+                                                    {data.price
+                                                        ? `Rp ${data.price.toLocaleString()}`
+                                                        : <span className="text-muted-foreground italic text-xs">Base: Rp {product.basePrice.toLocaleString()}</span>
+                                                    }
+                                                </button>
+                                            </div>
+                                        </TableCell>
+                                    );
+                                })}
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+                <div className="p-4 border-t">
+                    <Pagination totalPages={totalPages} currentPage={currentPage} />
+                </div>
+            </div>
 
             <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
                 <DialogContent>

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Download } from "lucide-react";
+import { Calendar as CalendarIcon, Download, Search } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import * as xlsx from "xlsx";
 import { Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, CartesianGrid } from "recharts";
@@ -10,6 +10,7 @@ import { Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis
 import { cn, formatRupiah, formatRupiahCompact, getMonthName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input";
 import {
     Popover,
     PopoverContent,
@@ -32,6 +33,18 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
 
     const [data, setData] = React.useState(initialData);
     const [isLoading, setIsLoading] = React.useState(false);
+    const [searchQuery, setSearchQuery] = React.useState("");
+
+    const filteredTransactions = React.useMemo(() => {
+        if (!data.transactionList) return [];
+        if (!searchQuery) return data.transactionList;
+        const q = searchQuery.toLowerCase();
+        return data.transactionList.filter((t: any) =>
+            (t.productName?.toLowerCase().includes(q)) ||
+            (t.buyerName?.toLowerCase().includes(q)) ||
+            (t.sku?.toLowerCase().includes(q))
+        );
+    }, [data.transactionList, searchQuery]);
 
     React.useEffect(() => {
         // Only fetch if date range is complete
@@ -69,12 +82,12 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
     }, [date, role, adminId]);
 
     const exportToExcel = () => {
-        if (!data.transactionList || data.transactionList.length === 0) return;
+        if (filteredTransactions.length === 0) return;
 
         const workbook = xlsx.utils.book_new();
 
         // Group transactions by Buyer/Branch
-        const groupedData = data.transactionList.reduce((acc: any, t: any) => {
+        const groupedData = filteredTransactions.reduce((acc: any, t: any) => {
             const key = t.buyerName || "Umum";
             if (!acc[key]) acc[key] = [];
             acc[key].push(t);
@@ -291,8 +304,17 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
             </div>
 
             <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <CardTitle>Rincian Transaksi</CardTitle>
+                    <div className="relative w-full md:w-80">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                        <Input
+                            placeholder="Cari produk atau cabang..."
+                            className="pl-9"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -307,8 +329,8 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {data.transactionList?.length > 0 ? (
-                                data.transactionList.map((t: any, i: number) => (
+                            {filteredTransactions.length > 0 ? (
+                                filteredTransactions.map((t: any, i: number) => (
                                     <TableRow key={i}>
                                         <TableCell>{format(new Date(t.date), "dd MMM yyyy")}</TableCell>
                                         <TableCell>{t.buyerName}</TableCell>
@@ -321,7 +343,7 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
                             ) : (
                                 <TableRow>
                                     <TableCell colSpan={6} className="h-24 text-center">
-                                        Tidak ada transaksi dalam rentang waktu ini.
+                                        Tidak ada transaksi yang ditemukan.
                                     </TableCell>
                                 </TableRow>
                             )}

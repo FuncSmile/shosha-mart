@@ -13,7 +13,8 @@ export default async function ProductsPage(
     }
 
     const page = typeof searchParams?.page === 'string' ? parseInt(searchParams.page) : 1;
-    const { products, totalCount } = await getAllProducts(page);
+    const search = typeof searchParams?.q === 'string' ? searchParams.q : undefined;
+    const { products, totalCount } = await getAllProducts(page, 10, search);
 
     return (
         <div className="container mx-auto py-8 px-4">
