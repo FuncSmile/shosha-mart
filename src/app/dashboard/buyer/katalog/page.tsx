@@ -13,13 +13,15 @@ export default async function KatalogPage(
     }
 
     const page = typeof searchParams?.page === 'string' ? parseInt(searchParams.page) : 1;
-    const { products, totalCount } = await getProductsForBuyer(session.tierId, page);
+    const search = typeof searchParams?.search === 'string' ? searchParams.search : undefined;
+    const { products, totalCount } = await getProductsForBuyer(session.tierId, page, 10, search);
 
     return (
         <CatalogClient
             initialProducts={products}
             totalCount={totalCount}
             currentPage={page}
+            initialSearch={search || ""}
         />
     );
 }

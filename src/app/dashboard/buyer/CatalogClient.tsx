@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ImageIcon } from "lucide-react";
 import { Product, useCartStore } from "@/store/cartStore";
 import { Button } from "@/components/ui/button";
@@ -10,21 +11,49 @@ import { Pagination } from "@/components/ui/Pagination";
 export default function CatalogClient({
     initialProducts,
     totalCount,
-    currentPage
+    currentPage,
+    initialSearch = ""
 }: {
     initialProducts: Product[];
     totalCount: number;
     currentPage: number;
+    initialSearch?: string;
 }) {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const totalPages = Math.ceil(totalCount / 10);
-    const [searchQuery, setSearchQuery] = useState("");
+    const [searchQuery, setSearchQuery] = useState(initialSearch);
     const addToCart = useCartStore((state) => state.addToCart);
     const cart = useCartStore((state) => state.cart);
 
-    const filteredProducts = initialProducts.filter((p) =>
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.sku.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    useEffect(() => {
+        const currentSearch = searchParams.get("search") || "";
+        if (searchQuery === currentSearch) return;
+
+        const handler = setTimeout(() => {
+            const params = new URLSearchParams(searchParams.toString());
+            if (searchQuery) {
+                params.set("search", searchQuery);
+            } else {
+                params.delete("search");
+            }
+            params.set("page", "1");
+            router.push(`${pathname}?${params.toString()}`);
+        }, 500);
+
+        return () => clearTimeout(handler);
+    }, [searchQuery, pathname, router, searchParams]);
+
+    // Sync input with URL when navigating (e.g. back button)
+    useEffect(() => {
+        const currentSearch = searchParams.get("search") || "";
+        if (currentSearch !== searchQuery) {
+            setSearchQuery(currentSearch);
+        }
+    }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const filteredProducts = initialProducts;
 
     return (
         <div className="space-y-6">

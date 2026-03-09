@@ -6,9 +6,26 @@ import { eq, and, or, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import * as xlsx from "xlsx";
 
-export async function getProductsForBuyer(tierId: string, page: number = 1, limit: number = 10) {
+export async function getProductsForBuyer(tierId: string, page: number = 1, limit: number = 10, search?: string) {
     try {
         const offset = (page - 1) * limit;
+
+        let whereClause = and(
+            or(
+                isNull(tierPrices.isActive),
+                eq(tierPrices.isActive, true)
+            )
+        );
+
+        if (search) {
+            whereClause = and(
+                whereClause,
+                or(
+                    sql`LOWER(${products.name}) LIKE ${`%${search.toLowerCase()}%`}`,
+                    sql`LOWER(${products.sku}) LIKE ${`%${search.toLowerCase()}%`}`
+                )
+            );
+        }
 
         const result = await db
             .select({
@@ -29,12 +46,7 @@ export async function getProductsForBuyer(tierId: string, page: number = 1, limi
                     eq(tierPrices.tierId, tierId)
                 )
             )
-            .where(
-                or(
-                    isNull(tierPrices.isActive),
-                    eq(tierPrices.isActive, true)
-                )
-            )
+            .where(whereClause)
             .limit(limit)
             .offset(offset);
 
@@ -48,12 +60,7 @@ export async function getProductsForBuyer(tierId: string, page: number = 1, limi
                     eq(tierPrices.tierId, tierId)
                 )
             )
-            .where(
-                or(
-                    isNull(tierPrices.isActive),
-                    eq(tierPrices.isActive, true)
-                )
-            );
+            .where(whereClause);
 
         return {
             products: result.map(p => ({
