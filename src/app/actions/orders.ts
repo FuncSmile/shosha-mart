@@ -6,6 +6,9 @@ import { eq, sql, and, inArray, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import * as xlsx from "xlsx";
+import { format } from "date-fns";
+import { id } from "date-fns/locale";
+import { sendWhatsappReminder } from "@/lib/whatsapp";
 
 const sanitizePrice = (val: any): number => {
     if (typeof val === 'number') return Math.floor(val);
@@ -264,6 +267,50 @@ export async function submitOrder(
                     .set({ stock: sql`${products.stock} - ${item.quantity}` })
                     .where(eq(products.id, item.productId));
             }
+
+            // 5. Send WhatsApp Reminder (async, don't await so it doesn't block)
+            // We fetch the buyer info here because we are still within the transaction/action scope
+            // but we'll run the actual fetch call in a separate try-catch to not fail the order.
+            (async () => {
+                try {
+                    const buyer = await db.query.users.findFirst({
+                        where: eq(users.id, buyerId),
+                    });
+
+                    if (buyer) {
+                        const invoiceNumber = newOrder.id.split("-")[0].toUpperCase();
+                        const dateStr = format(new Date(), "dd MMMM yyyy HH:mm", { locale: id });
+                        const branchName = buyer.branchName || "-";
+                        
+                        // Fetch product names for the reminder
+                        const productIds = cartItems.map(i => i.productId);
+                        const fetchedProducts = await db.query.products.findMany({
+                            where: inArray(products.id, productIds)
+                        });
+
+                        const itemLines = cartItems.map(item => {
+                            const p = fetchedProducts.find(fp => fp.id === item.productId);
+                            return `- ${p?.name || "Produk"}: ${item.quantity} ${p?.unit || "Pcs"}`;
+                        }).join("\n");
+
+                        const message = `*PESANAN BARU TERIMA - SHOSHA MART*\n\n` +
+                            `No. Invoice: #${invoiceNumber}\n` +
+                            `Tanggal: ${dateStr}\n` +
+                            `Cabang: ${branchName} (${buyer.username})\n\n` +
+                            `*Daftar Barang:*\n${itemLines}\n\n` +
+                            `*Total Pembelian: Rp ${totalAmount.toLocaleString('id-ID')}*\n\n` +
+                            `Mohon Admin segera cek pesanan di dashboard:\n` +
+                            `https://shosha-mart-plum.vercel.app/dashboard/\n\n` +
+                            `Terima kasih.`;
+                        
+                        // Send to the specified Group ID
+                        const groupId = "120363042860463569@g.us";
+                        await sendWhatsappReminder(groupId, message);
+                    }
+                } catch (error) {
+                    console.error("[WhatsApp Reminder] Error in background task:", error);
+                }
+            })();
         });
 
         revalidatePath("/dashboard/buyer");

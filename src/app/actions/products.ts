@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { products, tierPrices, tiers } from "@/lib/db/schema";
-import { eq, and, or, isNull, sql } from "drizzle-orm";
+import { eq, and, or, isNull, sql, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import * as xlsx from "xlsx";
 
@@ -11,6 +11,7 @@ export async function getProductsForBuyer(tierId: string, page: number = 1, limi
         const offset = (page - 1) * limit;
 
         let whereClause = and(
+            isNull(products.deletedAt),
             or(
                 isNull(tierPrices.isActive),
                 eq(tierPrices.isActive, true)
@@ -115,12 +116,37 @@ export async function updateProduct(id: string, data: { name: string; sku: strin
 
 export async function deleteProduct(id: string) {
     try {
-        await db.delete(products).where(eq(products.id, id));
+        const product = await db.query.products.findFirst({
+            where: eq(products.id, id)
+        });
+
+        if (!product || product.deletedAt) {
+            return { success: false, error: "Produk tidak ditemukan atau sudah dihapus." };
+        }
+
+        await db.update(products)
+            .set({ deletedAt: new Date() })
+            .where(eq(products.id, id));
+
         revalidatePath("/dashboard/superadmin/products");
-        return { success: true, message: "Produk berhasil dihapus!" };
+        return { success: true, message: "Produk berhasil diarsipkan (Soft Delete)!" };
     } catch (error) {
         console.error("Failed to delete product:", error);
-        return { success: false, error: "Gagal menghapus produk. Produk mungkin terkait dengan data lain." };
+        return { success: false, error: "Gagal menghapus produk." };
+    }
+}
+
+export async function restoreProduct(id: string) {
+    try {
+        await db.update(products)
+            .set({ deletedAt: null })
+            .where(eq(products.id, id));
+
+        revalidatePath("/dashboard/superadmin/products");
+        return { success: true, message: "Produk berhasil dikembalikan!" };
+    } catch (error) {
+        console.error("Failed to restore product:", error);
+        return { success: false, error: "Gagal mengembalikan produk." };
     }
 }
 
@@ -140,6 +166,7 @@ export async function getAllProducts(page: number = 1, limit: number = 10, searc
             .select()
             .from(products)
             .where(whereClause)
+            .orderBy(desc(products.createdAt))
             .limit(limit)
             .offset(offset);
 
@@ -245,7 +272,7 @@ export async function importProducts(formData: FormData) {
                 if (existingProduct.length > 0) {
                     // Update
                     await tx.update(products)
-                        .set({ name, unit, stock, basePrice })
+                        .set({ name, unit, stock, basePrice, deletedAt: null }) // Restore if it was soft-deleted
                         .where(eq(products.sku, sku));
                     productId = existingProduct[0].id;
                     updated++;

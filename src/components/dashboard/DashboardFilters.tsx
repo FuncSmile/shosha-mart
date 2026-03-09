@@ -70,7 +70,7 @@ export default function DashboardFilters({ role, branches = [] }: DashboardFilte
     const [searchQuery, setSearchQuery] = useState<string>(urlSearch || "");
     const [statusFilter, setStatusFilter] = useState<string>(() => {
         if (urlStatus) return urlStatus;
-        return role === "SUPERADMIN" ? "PENDING_APPROVAL,APPROVED,PACKING,PROCESSED" : "APPROVED,PACKING";
+        return "PENDING_APPROVAL";
     });
     const [isExporting, setIsExporting] = useState(false);
 
@@ -149,7 +149,7 @@ export default function DashboardFilters({ role, branches = [] }: DashboardFilte
         }
 
         if (status !== undefined) {
-            const defaultStatus = role === "SUPERADMIN" ? "PENDING_APPROVAL,APPROVED,PACKING,PROCESSED" : "APPROVED,PACKING";
+            const defaultStatus = "PENDING_APPROVAL";
             if (status && status !== defaultStatus) {
                 if (params.get("status") !== status) {
                     params.set("status", status);
@@ -184,7 +184,7 @@ export default function DashboardFilters({ role, branches = [] }: DashboardFilte
         setDate(undefined);
         setBranchId("all");
         setSearchQuery("");
-        setStatusFilter(role === "SUPERADMIN" ? "PENDING_APPROVAL,APPROVED,PACKING,PROCESSED" : "APPROVED,PACKING");
+        setStatusFilter("PENDING_APPROVAL");
 
         const params = new URLSearchParams();
         router.replace(`${pathname}`, { scroll: false });
@@ -348,15 +348,15 @@ export default function DashboardFilters({ role, branches = [] }: DashboardFilte
                             <SelectContent>
                                 {role === "ADMIN_TIER" ? (
                                     <>
-                                        <SelectItem value="APPROVED,PACKING">Sedang Berjalan</SelectItem>
                                         <SelectItem value="PENDING_APPROVAL">Menunggu Persetujuan</SelectItem>
+                                        <SelectItem value="APPROVED,PACKING">Sedang Berjalan</SelectItem>
                                         <SelectItem value="APPROVED">Disetujui</SelectItem>
                                         <SelectItem value="PACKING">Packing</SelectItem>
                                     </>
                                 ) : (
                                     <>
-                                        <SelectItem value="PENDING_APPROVAL,APPROVED,PACKING,PROCESSED">Semua Aktif</SelectItem>
                                         <SelectItem value="PENDING_APPROVAL">Perlu Persetujuan</SelectItem>
+                                        <SelectItem value="PENDING_APPROVAL,APPROVED,PACKING,PROCESSED">Semua Aktif</SelectItem>
                                         <SelectItem value="APPROVED">Dalam Antrean</SelectItem>
                                         <SelectItem value="PACKING">Sedang Packing</SelectItem>
                                         <SelectItem value="PROCESSED">Selesai (Hari Ini)</SelectItem>

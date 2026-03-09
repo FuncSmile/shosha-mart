@@ -43,8 +43,11 @@ export const products = sqliteTable("products", {
   stock: integer("stock").notNull().default(0), // Product stock
   unit: text("unit").notNull().default("Pcs"),
   imageUrl: text("image_url"), // Optional image URL for hybrid image management
+  deletedAt: integer("deleted_at", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
-});
+}, (products) => ({
+  deletedAtIndex: index("deleted_at_idx").on(products.deletedAt),
+}));
 
 export const productsRelations = relations(products, ({ many }) => ({
   tierPrices: many(tierPrices),

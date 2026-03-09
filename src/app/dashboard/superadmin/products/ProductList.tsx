@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { createProduct, updateProduct, deleteProduct } from "@/app/actions/products";
+import { createProduct, updateProduct, deleteProduct, restoreProduct } from "@/app/actions/products";
 import { uploadImageAction } from "@/app/actions/upload";
 import Image from "next/image";
-import { ImageIcon, Search } from "lucide-react";
+import { ImageIcon, Search, RotateCcw, ArchiveX } from "lucide-react";
 import { ImportProductDialog } from "./ImportProductDialog";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Pagination } from "@/components/ui/Pagination";
+import { Badge } from "@/components/ui/badge";
 
 type Product = {
     id: string;
@@ -22,6 +23,7 @@ type Product = {
     stock: number;
     unit: string;
     imageUrl: string | null;
+    deletedAt: Date | string | number | null;
 };
 
 type FormDataState = {
@@ -134,10 +136,19 @@ export default function ProductList({
         });
     };
 
-    const handleDelete = (id: string) => {
-        if (!confirm("Apakah Anda yakin ingin menghapus produk ini?")) return;
+    const handleDelete = (id: string, name: string) => {
+        if (!confirm(`Arsipkan produk '${name}'? Order history akan tetap tersimpan.`)) return;
         startTransition(async () => {
             const result = await deleteProduct(id);
+            if (!result?.success) {
+                alert(result?.error);
+            }
+        });
+    };
+
+    const handleRestore = (id: string) => {
+        startTransition(async () => {
+            const result = await restoreProduct(id);
             if (!result?.success) {
                 alert(result?.error);
             }
@@ -296,7 +307,7 @@ export default function ProductList({
                     </TableHeader>
                     <TableBody>
                         {initialProducts.map((product) => (
-                            <TableRow key={product.id}>
+                            <TableRow key={product.id} className={product.deletedAt ? "opacity-60 bg-neutral-50" : ""}>
                                 <TableCell>
                                     <div className="w-10 h-10 rounded-md border overflow-hidden bg-neutral-50 flex items-center justify-center shrink-0">
                                         {product.imageUrl ? (
@@ -313,7 +324,14 @@ export default function ProductList({
                                         )}
                                     </div>
                                 </TableCell>
-                                <TableCell className="font-medium">{product.name}</TableCell>
+                                <TableCell className="font-medium">
+                                    <div className="flex flex-col">
+                                        <span>{product.name}</span>
+                                        {product.deletedAt && (
+                                            <Badge variant="outline" className="w-fit h-4 text-[10px] bg-red-50 text-red-600 border-red-200 uppercase mt-0.5">TERARSIP</Badge>
+                                        )}
+                                    </div>
+                                </TableCell>
                                 <TableCell className="text-muted-foreground">{product.sku}</TableCell>
                                 <TableCell>
                                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800">
@@ -322,9 +340,33 @@ export default function ProductList({
                                 </TableCell>
                                 <TableCell>Rp {product.basePrice.toLocaleString()}</TableCell>
                                 <TableCell>{product.stock}</TableCell>
-                                <TableCell className="text-right space-x-2">
-                                    <Button variant="outline" size="sm" onClick={() => openEdit(product)}>Edit</Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleDelete(product.id)}>Hapus</Button>
+                                <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                        <Button variant="outline" size="sm" onClick={() => openEdit(product)} disabled={!!product.deletedAt}>Edit</Button>
+                                        {product.deletedAt ? (
+                                            <Button 
+                                                variant="outline" 
+                                                size="sm" 
+                                                className="border-green-200 text-green-700 hover:bg-green-50 gap-1"
+                                                onClick={() => handleRestore(product.id)}
+                                                disabled={isPending}
+                                            >
+                                                <RotateCcw className="w-3 h-3" />
+                                                Restore
+                                            </Button>
+                                        ) : (
+                                            <Button 
+                                                variant="destructive" 
+                                                size="sm" 
+                                                onClick={() => handleDelete(product.id, product.name)}
+                                                disabled={isPending}
+                                                className="gap-1 shadow-sm"
+                                            >
+                                                <ArchiveX className="w-3 h-3" />
+                                                Hapus
+                                            </Button>
+                                        )}
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))}

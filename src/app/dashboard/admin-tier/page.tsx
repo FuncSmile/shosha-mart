@@ -29,7 +29,7 @@ export default async function AdminTierDashboard(
     const endDate = searchParams?.endDate ? parseInt(searchParams.endDate as string) : undefined;
     const branchId = searchParams?.branchId ? searchParams.branchId as string : undefined;
     const searchQuery = searchParams?.q ? searchParams.q as string : undefined;
-    const statusFilter = searchParams?.status ? (searchParams.status as string).split(",") : ["APPROVED", "PACKING"];
+    const statusFilter = searchParams?.status ? (searchParams.status as string).split(",") : ["PENDING_APPROVAL"];
 
     // Fetch branches for filter dropdown (buyers created by this Admin_Tier)
     const branches = await db.query.users.findMany({
