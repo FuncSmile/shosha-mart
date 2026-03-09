@@ -8,6 +8,7 @@ import { Calendar as CalendarIcon, X, Download, Loader2, Search, Check } from "l
 import { DateRange } from "react-day-picker";
 import * as xlsx from "xlsx";
 import { getReportData } from "@/app/actions/reports";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -69,7 +70,7 @@ export default function DashboardFilters({ role, branches = [] }: DashboardFilte
     const [searchQuery, setSearchQuery] = useState<string>(urlSearch || "");
     const [statusFilter, setStatusFilter] = useState<string>(() => {
         if (urlStatus) return urlStatus;
-        return role === "SUPERADMIN" ? "PENDING_APPROVAL,APPROVED,PACKING" : "APPROVED,PACKING";
+        return role === "SUPERADMIN" ? "PENDING_APPROVAL,APPROVED,PACKING,PROCESSED" : "APPROVED,PACKING";
     });
     const [isExporting, setIsExporting] = useState(false);
 
@@ -148,7 +149,8 @@ export default function DashboardFilters({ role, branches = [] }: DashboardFilte
         }
 
         if (status !== undefined) {
-            if (status && status !== "APPROVED,PACKING") {
+            const defaultStatus = role === "SUPERADMIN" ? "PENDING_APPROVAL,APPROVED,PACKING,PROCESSED" : "APPROVED,PACKING";
+            if (status && status !== defaultStatus) {
                 if (params.get("status") !== status) {
                     params.set("status", status);
                     changed = true;
@@ -182,7 +184,7 @@ export default function DashboardFilters({ role, branches = [] }: DashboardFilte
         setDate(undefined);
         setBranchId("all");
         setSearchQuery("");
-        setStatusFilter(role === "SUPERADMIN" ? "PENDING_APPROVAL,APPROVED,PACKING" : "APPROVED,PACKING");
+        setStatusFilter(role === "SUPERADMIN" ? "PENDING_APPROVAL,APPROVED,PACKING,PROCESSED" : "APPROVED,PACKING");
 
         const params = new URLSearchParams();
         router.replace(`${pathname}`, { scroll: false });
@@ -193,41 +195,107 @@ export default function DashboardFilters({ role, branches = [] }: DashboardFilte
         try {
             const now = new Date();
             const exportStart = date?.from ? date.from.getTime() : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-            const exportEnd = date?.to ? date.to.getTime() : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+            let exportEnd: number;
+            if (date?.to) {
+                const end = new Date(date.to);
+                end.setHours(23, 59, 59, 999);
+                exportEnd = end.getTime();
+            } else if (date?.from) {
+                const end = new Date(date.from);
+                end.setHours(23, 59, 59, 999);
+                exportEnd = end.getTime();
+            } else {
+                exportEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+            }
 
             const result = await getReportData({
                 startDate: exportStart,
                 endDate: exportEnd,
                 role: role,
                 branchId: branchId !== "all" ? branchId : undefined,
-                // AdminId is implicitly handled by the server side if role === "ADMIN_TIER" 
-                // but getReportData currently requires adminId for Admin_Tier filtering.
-                // However, wait, in DashboardFilters we don't have the adminId... 
-                // Let's pass the currently logged-in adminId from session inside the action maybe?
-                // Actually, the user asked to just export what is seen.
             });
 
             if (result.success && result.transactionList?.length > 0) {
-                const ws = xlsx.utils.json_to_sheet(result.transactionList.map((t: any) => ({
-                    "Tanggal": t.date,
-                    "Nama Buyer": t.buyerName,
-                    "Nama Barang": t.productName,
-                    "Satuan": t.unit,
-                    "Qty": t.quantity,
-                    "Total Harga (Rp)": t.totalPrice
-                })));
+                const workbook = xlsx.utils.book_new();
 
-                const wb = xlsx.utils.book_new();
-                xlsx.utils.book_append_sheet(wb, ws, "Laporan Penjualan");
+                // Group transactions by Buyer/Branch
+                const groupedData = result.transactionList.reduce((acc: any, t: any) => {
+                    const key = t.buyerName || "Umum";
+                    if (!acc[key]) acc[key] = [];
+                    acc[key].push(t);
+                    return acc;
+                }, {});
 
-                const fileName = `Laporan_Dashboard_${format(exportStart, "yyyy-MM-dd")}_to_${format(exportEnd, "yyyy-MM-dd")}.xlsx`;
-                xlsx.writeFile(wb, fileName);
+                // Prepare Summary Sheet Data
+                const summaryData: any[] = Object.entries(groupedData).map(([branchName, transactions]: [string, any]) => {
+                    const branchTotal = transactions.reduce((sum: number, t: any) => sum + t.totalPrice, 0);
+                    return {
+                        "Nama Cabang/Buyer": branchName,
+                        "Total Nominal (Rp)": branchTotal
+                    };
+                });
+
+                // Add Grand Total to Summary
+                const grandTotal = summaryData.reduce((sum, item) => sum + item["Total Nominal (Rp)"], 0);
+                summaryData.push({} as any);
+                summaryData.push({
+                    "Nama Cabang/Buyer": "GRAND TOTAL",
+                    "Total Nominal (Rp)": grandTotal
+                });
+
+                // Create Summary Sheet
+                const wsSummary = xlsx.utils.json_to_sheet(summaryData);
+                wsSummary['!cols'] = [{ wch: 40 }, { wch: 25 }];
+                xlsx.utils.book_append_sheet(workbook, wsSummary, "REKAP TOTAL");
+
+                // Create a sheet for each branch
+                Object.entries(groupedData).forEach(([branchName, transactions]: [string, any]) => {
+                    // Prepare data for this sheet
+                    const sheetData = transactions.map((t: any) => ({
+                        "Tanggal": t.date,
+                        "Nama Barang": t.productName,
+                        "Satuan": t.unit,
+                        "Qty": t.quantity,
+                        "Total Harga (Rp)": t.totalPrice
+                    }));
+
+                    // Calculate total for this branch
+                    const branchTotal = transactions.reduce((sum: number, t: any) => sum + t.totalPrice, 0);
+
+                    // Add an empty row and then the total
+                    sheetData.push({});
+                    sheetData.push({
+                        "Tanggal": "TOTAL",
+                        "Total Harga (Rp)": branchTotal
+                    });
+
+                    // Convert to worksheet
+                    const ws = xlsx.utils.json_to_sheet(sheetData);
+
+                    // Set column widths for better readability
+                    const wscols = [
+                        { wch: 15 }, // Tanggal
+                        { wch: 30 }, // Nama Barang
+                        { wch: 10 }, // Satuan
+                        { wch: 8 },  // Qty
+                        { wch: 20 }, // Total Harga
+                    ];
+                    ws['!cols'] = wscols;
+
+                    // Clean the branch name for sheet name (max 31 chars, no special chars)
+                    const cleanSheetName = branchName.replace(/[\\/?*\[\]]/g, "").substring(0, 31);
+                    xlsx.utils.book_append_sheet(workbook, ws, cleanSheetName);
+                });
+
+                const fileName = `Laporan_Global_${format(exportStart, "yyyy-MM-dd")}_to_${format(exportEnd, "yyyy-MM-dd")}.xlsx`;
+                xlsx.writeFile(workbook, fileName);
+                toast.success("Laporan berhasil diunduh.");
             } else {
-                alert("Tidak ada data transaksi untuk diekspor pada rentang filter ini.");
+                toast.error("Tidak ada data transaksi untuk diekspor.");
             }
         } catch (error) {
             console.error("Gagal mengekspor:", error);
-            alert("Terjadi kesalahan saat mengekspor data.");
+            toast.error("Terjadi kesalahan saat mengekspor data.");
         } finally {
             setIsExporting(false);
         }
@@ -287,7 +355,7 @@ export default function DashboardFilters({ role, branches = [] }: DashboardFilte
                                     </>
                                 ) : (
                                     <>
-                                        <SelectItem value="PENDING_APPROVAL,APPROVED,PACKING">Semua Aktif</SelectItem>
+                                        <SelectItem value="PENDING_APPROVAL,APPROVED,PACKING,PROCESSED">Semua Aktif</SelectItem>
                                         <SelectItem value="PENDING_APPROVAL">Perlu Persetujuan</SelectItem>
                                         <SelectItem value="APPROVED">Dalam Antrean</SelectItem>
                                         <SelectItem value="PACKING">Sedang Packing</SelectItem>

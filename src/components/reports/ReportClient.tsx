@@ -41,9 +41,14 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
                 try {
                     // Dynamic import of server action to avoid passing it as prop if complex
                     const { getReportData } = await import("@/app/actions/reports");
+
+                    const start = date.from!.getTime();
+                    const end = new Date(date.to!);
+                    end.setHours(23, 59, 59, 999);
+
                     const result = await getReportData({
-                        startDate: date.from!.getTime(),
-                        endDate: date.to!.getTime(),
+                        startDate: start,
+                        endDate: end.getTime(),
                         role,
                         adminId
                     });
@@ -66,20 +71,79 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
     const exportToExcel = () => {
         if (!data.transactionList || data.transactionList.length === 0) return;
 
-        const ws = xlsx.utils.json_to_sheet(data.transactionList.map((t: any) => ({
-            "Tanggal": t.date,
-            "Nama Buyer": t.buyerName,
-            "Nama Barang": t.productName,
-            "Satuan": t.unit,
-            "Qty": t.quantity,
-            "Total Harga (Rp)": t.totalPrice
-        })));
+        const workbook = xlsx.utils.book_new();
 
-        const wb = xlsx.utils.book_new();
-        xlsx.utils.book_append_sheet(wb, ws, "Laporan Penjualan");
+        // Group transactions by Buyer/Branch
+        const groupedData = data.transactionList.reduce((acc: any, t: any) => {
+            const key = t.buyerName || "Umum";
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(t);
+            return acc;
+        }, {});
+
+        // Prepare Summary Sheet Data
+        const summaryData: any[] = Object.entries(groupedData).map(([branchName, transactions]: [string, any]) => {
+            const branchTotal = transactions.reduce((sum: number, t: any) => sum + t.totalPrice, 0);
+            return {
+                "Nama Cabang/Buyer": branchName,
+                "Total Nominal (Rp)": branchTotal
+            };
+        });
+
+        // Add Grand Total to Summary
+        const grandTotal = summaryData.reduce((sum, item) => sum + item["Total Nominal (Rp)"], 0);
+        summaryData.push({} as any);
+        summaryData.push({
+            "Nama Cabang/Buyer": "GRAND TOTAL",
+            "Total Nominal (Rp)": grandTotal
+        });
+
+        // Create Summary Sheet
+        const wsSummary = xlsx.utils.json_to_sheet(summaryData);
+        wsSummary['!cols'] = [{ wch: 40 }, { wch: 25 }];
+        xlsx.utils.book_append_sheet(workbook, wsSummary, "REKAP TOTAL");
+
+        // Create a sheet for each branch
+        Object.entries(groupedData).forEach(([branchName, transactions]: [string, any]) => {
+            // Prepare data for this sheet
+            const sheetData = transactions.map((t: any) => ({
+                "Tanggal": t.date,
+                "Nama Barang": t.productName,
+                "Satuan": t.unit,
+                "Qty": t.quantity,
+                "Total Harga (Rp)": t.totalPrice
+            }));
+
+            // Calculate total for this branch
+            const branchTotal = transactions.reduce((sum: number, t: any) => sum + t.totalPrice, 0);
+
+            // Add an empty row and then the total
+            sheetData.push({});
+            sheetData.push({
+                "Tanggal": "TOTAL",
+                "Total Harga (Rp)": branchTotal
+            });
+
+            // Convert to worksheet
+            const ws = xlsx.utils.json_to_sheet(sheetData);
+
+            // Set column widths for better readability
+            const wscols = [
+                { wch: 15 }, // Tanggal
+                { wch: 30 }, // Nama Barang
+                { wch: 10 }, // Satuan
+                { wch: 8 },  // Qty
+                { wch: 20 }, // Total Harga
+            ];
+            ws['!cols'] = wscols;
+
+            // Clean the branch name for sheet name (max 31 chars, no special chars)
+            const cleanSheetName = branchName.replace(/[\\/?*\[\]]/g, "").substring(0, 31);
+            xlsx.utils.book_append_sheet(workbook, ws, cleanSheetName);
+        });
 
         const fileName = `Laporan_Penjualan_${format(date?.from || new Date(), "yyyy-MM-dd")}_to_${format(date?.to || new Date(), "yyyy-MM-dd")}.xlsx`;
-        xlsx.writeFile(wb, fileName);
+        xlsx.writeFile(workbook, fileName);
     };
 
     return (

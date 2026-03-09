@@ -104,6 +104,7 @@ export default async function AdminTierDashboard(
         createdAt: o.createdAt,
         items: o.items.map(item => ({
             id: item.id,
+            productId: item.productId,
             name: item.product?.name || "Produk Terhapus",
             sku: item.product?.sku || "-",
             unit: item.product?.unit || "Pcs",

@@ -20,6 +20,7 @@ interface CartState {
     expiresAt: number | null;
     setUserId: (userId: string) => void;
     addToCart: (product: Product) => void;
+    addToCartBulk: (items: CartItem[]) => void;
     removeFromCart: (productId: string) => void;
     updateQuantity: (productId: string, quantity: number) => void;
     clearCart: () => void;
@@ -56,6 +57,28 @@ export const useCartStore = create<CartState>()(
                                 quantity: newQuantity,
                             },
                         },
+                    };
+                }),
+
+                addToCartBulk: (newItems) => set((state) => {
+                    const nextCart = { ...state.cart };
+                    newItems.forEach(item => {
+                        const current = nextCart[item.id];
+                        const existingQty = current ? current.quantity : 0;
+                        const targetQty = existingQty + item.quantity;
+                        const finalQty = Math.min(targetQty, item.stock);
+
+                        if (finalQty > 0) {
+                            nextCart[item.id] = {
+                                ...item,
+                                quantity: finalQty,
+                            };
+                        }
+                    });
+
+                    return {
+                        expiresAt: getExpiration(),
+                        cart: nextCart,
                     };
                 }),
 

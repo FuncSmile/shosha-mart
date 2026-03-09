@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserPlus, Search, Edit, Trash2 } from "lucide-react";
+import { UserPlus, Search, Edit, Trash2, History } from "lucide-react";
 import { getUsers, getAdmins, deleteUser } from "@/app/actions/userActions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UserFormDialog } from "./UserFormDialog";
+import { UserHistoryDialog } from "./UserHistoryDialog";
 import { toast } from "sonner";
 import {
     AlertDialog,
@@ -44,6 +45,8 @@ export function UserManagementClient({
     const [editingUser, setEditingUser] = useState<any>(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [userToDelete, setUserToDelete] = useState<string | null>(null);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [selectedUser, setSelectedUser] = useState<{ id: string, username: string } | null>(null);
 
     const totalPages = Math.ceil(totalCount / 10);
 
@@ -94,6 +97,11 @@ export function UserManagementClient({
     const handleDeleteClick = (id: string) => {
         setUserToDelete(id);
         setIsDeleteDialogOpen(true);
+    };
+
+    const handleHistoryClick = (user: any) => {
+        setSelectedUser({ id: user.id, username: user.username });
+        setIsHistoryOpen(true);
     };
 
     const confirmDelete = async () => {
@@ -179,6 +187,11 @@ export function UserManagementClient({
                                             <TableCell>{user.managedBy}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">
+                                                    {user.role === 'BUYER' && (
+                                                        <Button variant="outline" size="icon" onClick={() => handleHistoryClick(user)} title="Riwayat Belanja">
+                                                            <History className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
                                                     <Button variant="outline" size="icon" onClick={() => handleEditClick(user)}>
                                                         <Edit className="h-4 w-4" />
                                                     </Button>
@@ -210,6 +223,13 @@ export function UserManagementClient({
                 editingUser={editingUser}
                 onSuccess={fetchUsers}
                 admins={admins}
+            />
+
+            <UserHistoryDialog
+                isOpen={isHistoryOpen}
+                setIsOpen={setIsHistoryOpen}
+                userId={selectedUser?.id || null}
+                username={selectedUser?.username || null}
             />
 
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

@@ -126,6 +126,7 @@ export async function getReportData({
                 orderId: orders.id,
                 totalAmount: orders.totalAmount,
                 createdAt: orders.createdAt,
+                buyerId: orders.buyerId,
                 buyerName: users.branchName,
                 buyerUsername: users.username,
             })
@@ -178,6 +179,7 @@ export async function getReportData({
 
                 transactions.push({
                     date: dateStr,
+                    buyerId: order.buyerId,
                     buyerName: order.buyerName || order.buyerUsername,
                     productName: item.productName,
                     unit: item.unit,

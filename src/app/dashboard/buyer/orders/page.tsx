@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 import OrderDetail from "@/components/dashboard/OrderDetail";
+import ReorderButton from "./ReorderButton";
 
 export default async function BuyerOrdersPage() {
     const session = await getSession();
@@ -31,12 +32,14 @@ export default async function BuyerOrdersPage() {
         ...o,
         items: o.items.map(item => ({
             id: item.id,
+            productId: item.productId,
             name: item.product?.name || "Produk Terhapus",
             sku: item.product?.sku || "-",
             unit: item.product?.unit || "Pcs",
             imageUrl: item.product?.imageUrl || null,
             quantity: item.quantity,
             price: item.priceAtPurchase,
+            stock: item.product?.stock || 0,
         })),
     }));
 
@@ -85,6 +88,9 @@ export default async function BuyerOrdersPage() {
                                 <div className="text-right">
                                     <div className="text-[10px] text-neutral-400 uppercase tracking-wider">Total Pembayaran</div>
                                     <div className="text-xl font-bold text-blue-700">Rp {order.totalAmount.toLocaleString("id-ID")}</div>
+                                    <div className="mt-2">
+                                        <ReorderButton items={order.items} />
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { orders, orderItems, products, users } from "@/lib/db/schema";
-import { eq, sql, and, inArray } from "drizzle-orm";
+import { eq, sql, and, inArray, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import * as xlsx from "xlsx";
@@ -411,5 +411,114 @@ export async function bypassDeleteOrder(orderId: string) {
         return { success: true, message: "Pesanan berhasil dihapus secara permanen!" };
     } catch (error) {
         return { success: false, error: "Gagal menghapus pesanan." };
+    }
+}
+
+export async function getUserOrderHistory(userId: string) {
+    try {
+        const session = await getSession();
+        if (!session || (session.role !== "SUPERADMIN" && session.role !== "ADMIN_TIER")) {
+            return { success: false, error: "Akses ditolak." };
+        }
+
+        const ordersData = await db.query.orders.findMany({
+            where: eq(orders.buyerId, userId),
+            with: {
+                items: {
+                    with: {
+                        product: true,
+                    },
+                },
+            },
+            orderBy: [desc(orders.createdAt)],
+        });
+
+        const formattedOrders = ordersData.map(o => ({
+            ...o,
+            items: o.items.map(item => ({
+                id: item.id,
+                name: item.product?.name || "Produk Terhapus",
+                sku: item.product?.sku || "-",
+                unit: item.product?.unit || "Pcs",
+                imageUrl: item.product?.imageUrl || null,
+                quantity: item.quantity,
+                price: item.priceAtPurchase,
+            })),
+        }));
+
+        return { success: true, orders: formattedOrders };
+    } catch (error) {
+        console.error("Failed to fetch user order history:", error);
+        return { success: false, error: "Gagal mengambil riwayat pesanan." };
+    }
+}
+
+export async function updateOrderItems(
+    orderId: string,
+    newItems: { productId: string; quantity: number; priceAtPurchase: number }[]
+) {
+    try {
+        const session = await getSession();
+        if (!session || session.role !== "SUPERADMIN") {
+            return { success: false, error: "Hanya SuperAdmin yang dapat mengedit pesanan." };
+        }
+
+        return await db.transaction(async (tx) => {
+            // 1. Get existing items 
+            const existingItems = await tx.select()
+                .from(orderItems)
+                .where(eq(orderItems.orderId, orderId));
+
+            // 2. Restore all old stock first
+            for (const item of existingItems) {
+                await tx.update(products)
+                    .set({ stock: sql`${products.stock} + ${item.quantity}` })
+                    .where(eq(products.id, item.productId));
+            }
+
+            // 3. Delete old items
+            await tx.delete(orderItems).where(eq(orderItems.orderId, orderId));
+
+            // 4. Validate and deduct new stock
+            for (const item of newItems) {
+                const productData = await tx.select({ stock: products.stock, name: products.name })
+                    .from(products)
+                    .where(eq(products.id, item.productId));
+
+                if (productData.length === 0) {
+                    throw new Error(`Produk tidak ditemukan`);
+                }
+
+                if (productData[0].stock < item.quantity) {
+                    throw new Error(`Stok produk ${productData[0].name} tidak mencukupi (Sisa: ${productData[0].stock})`);
+                }
+
+                await tx.update(products)
+                    .set({ stock: sql`${products.stock} - ${item.quantity}` })
+                    .where(eq(products.id, item.productId));
+            }
+
+            // 5. Insert new items
+            await tx.insert(orderItems).values(
+                newItems.map(item => ({
+                    orderId,
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    priceAtPurchase: item.priceAtPurchase
+                }))
+            );
+
+            // 6. Update order total amount
+            const newTotalAmount = newItems.reduce((sum, item) => sum + (item.quantity * item.priceAtPurchase), 0);
+            await tx.update(orders)
+                .set({ totalAmount: newTotalAmount })
+                .where(eq(orders.id, orderId));
+
+            revalidatePath("/dashboard/superadmin");
+            return { success: true, message: "Pesanan berhasil diperbarui!" };
+        });
+    } catch (error: any) {
+        console.error("Failed to update order items:", error);
+        return { success: false, error: error.message || "Gagal memperbarui pesanan." };
     }
 }

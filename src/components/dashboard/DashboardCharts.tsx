@@ -31,7 +31,7 @@ export default function DashboardCharts({ data, role }: DashboardChartsProps) {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-medium text-neutral-500">
-                            {role === "BUYER" ? "Total Pengeluaran" : "Total Penjualan"}
+                            {role === "BUYER" ? "Total Pembelanjaan" : "Total Omset"}
                         </CardTitle>
                         <TrendingUp className="h-4 w-4 text-neutral-400" />
                     </CardHeader>
@@ -42,7 +42,9 @@ export default function DashboardCharts({ data, role }: DashboardChartsProps) {
 
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-neutral-500">Transaksi Selesai</CardTitle>
+                        <CardTitle className="text-sm font-medium text-neutral-500">
+                            {role === "BUYER" ? "Jumlah Pesanan" : "Transaksi Selesai"}
+                        </CardTitle>
                         <ShoppingCart className="h-4 w-4 text-neutral-400" />
                     </CardHeader>
                     <CardContent>
@@ -64,18 +66,20 @@ export default function DashboardCharts({ data, role }: DashboardChartsProps) {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <Card className="col-span-4">
+                <Card className="col-span-4 shadow-sm border-neutral-100">
                     <CardHeader>
-                        <CardTitle>Tren Transaksi</CardTitle>
-                        <CardDescription>Ringkasan 30 hari terakhir</CardDescription>
+                        <CardTitle className="text-lg font-bold">
+                            {role === "BUYER" ? "Tren Pembelanjaan" : "Tren Omset Penjualan"}
+                        </CardTitle>
+                        <CardDescription>Visualisasi data 30 hari terakhir</CardDescription>
                     </CardHeader>
                     <CardContent className="pl-2">
                         <ResponsiveContainer width="100%" height={350}>
                             <AreaChart data={data.salesTrend}>
                                 <defs>
                                     <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
+                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
@@ -96,15 +100,21 @@ export default function DashboardCharts({ data, role }: DashboardChartsProps) {
                                     tickLine={false}
                                     axisLine={false}
                                     tickFormatter={(value) => formatRupiahCompact(value)}
-                                    domain={['auto', 'auto']}
                                 />
                                 <Tooltip
-                                    formatter={(value: any) => [formatRupiah(Number(value)), "Nilai"]}
+                                    formatter={(value: any) => [
+                                        formatRupiah(Number(value)),
+                                        role === "BUYER" ? "Total Pengeluaran" : "Total Omset"
+                                    ]}
                                     labelFormatter={(label) => {
                                         const date = new Date(label);
-                                        return `Tanggal: ${date.getDate()} ${getMonthName(date.getMonth() + 1)} ${date.getFullYear()}`;
+                                        return `${date.getDate()} ${getMonthName(date.getMonth() + 1)} ${date.getFullYear()}`;
                                     }}
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
+                                    contentStyle={{
+                                        borderRadius: '12px',
+                                        border: '1px solid #f0f0f0',
+                                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
+                                    }}
                                 />
                                 <Area
                                     type="monotone"
@@ -114,7 +124,6 @@ export default function DashboardCharts({ data, role }: DashboardChartsProps) {
                                     fillOpacity={1}
                                     fill="url(#colorRevenue)"
                                     activeDot={{ r: 6, strokeWidth: 0, fill: '#2563eb' }}
-                                    dot={{ r: 4, fill: '#2563eb', strokeWidth: 2, stroke: '#fff' }}
                                 />
                             </AreaChart>
                         </ResponsiveContainer>

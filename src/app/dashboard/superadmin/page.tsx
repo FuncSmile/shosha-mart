@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { orders, users, tiers } from "@/lib/db/schema";
+import { orders, users, tiers, orderItems } from "@/lib/db/schema";
 import { eq, sql, desc, and, gte, lte, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +33,7 @@ export default async function SuperAdminDashboard(
     const endDate = searchParams?.endDate ? parseInt(searchParams.endDate as string) : undefined;
     const branchId = searchParams?.branchId ? searchParams.branchId as string : undefined;
     const searchQuery = searchParams?.q ? searchParams.q as string : undefined;
-    const statusFilter = searchParams?.status ? (searchParams.status as string).split(",") : ["PENDING_APPROVAL", "APPROVED", "PACKING"];
+    const statusFilter = searchParams?.status ? (searchParams.status as string).split(",") : ["PENDING_APPROVAL", "APPROVED", "PACKING", "PROCESSED"];
 
     // Fetch branches for filter dropdown
     const branches = await db.query.users.findMany({
@@ -72,19 +72,53 @@ export default async function SuperAdminDashboard(
         )`);
     }
 
-    // Fetch all orders with relational data for SuperAdmin Management
-    const approvedOrdersData = await db.query.orders.findMany({
-        where: and(...conditions),
-        with: {
-            tier: true,
-            buyer: true,
-            items: {
-                with: {
-                    product: true,
-                },
-            },
-        },
-        orderBy: [desc(orders.createdAt)],
+    // Fetch all orders with relational data for SuperAdmin Management using select to join users for search
+    const approvedOrdersData = await db
+        .select({
+            order: orders,
+            buyer: users,
+            tier: tiers,
+        })
+        .from(orders)
+        .innerJoin(users, eq(orders.buyerId, users.id))
+        .innerJoin(tiers, eq(orders.tierId, tiers.id))
+        .where(and(...conditions))
+        .orderBy(desc(orders.createdAt));
+
+    // For the relational items, it's efficient to fetch them separately if needed, 
+    // but here we already have the IDs. Let's fetch products for these orders.
+    const orderIds = approvedOrdersData.map(o => o.order.id);
+    const allItems = orderIds.length > 0
+        ? await db.query.orderItems.findMany({
+            where: inArray(orderItems.orderId, orderIds),
+            with: { product: true }
+        })
+        : [];
+
+    const approvedOrders = approvedOrdersData.map(o => {
+        const items = allItems.filter(item => item.orderId === o.order.id);
+        return {
+            id: o.order.id,
+            totalAmount: o.order.totalAmount,
+            status: o.order.status,
+            tierName: o.tier.name,
+            tierId: o.order.tierId,
+            buyerName: o.buyer.username,
+            branchName: o.buyer.branchName,
+            buyerPhone: o.buyer.phone,
+            createdAt: o.order.createdAt,
+            adminNotes: o.order.adminNotes,
+            items: items.map(item => ({
+                id: item.id,
+                productId: item.productId,
+                name: item.product?.name || "Produk Terhapus",
+                sku: item.product?.sku || "-",
+                unit: item.product?.unit || "Pcs",
+                imageUrl: item.product?.imageUrl || null,
+                quantity: item.quantity,
+                price: item.priceAtPurchase,
+            })),
+        };
     });
 
     // Fetch low stock products for alerts
@@ -99,27 +133,6 @@ export default async function SuperAdminDashboard(
         .from(productsTable)
         .where(lte(productsTable.stock, 10))
         .orderBy(desc(productsTable.stock));
-
-    const approvedOrders = approvedOrdersData.map(o => ({
-        id: o.id,
-        totalAmount: o.totalAmount,
-        status: o.status,
-        tierName: o.tier.name,
-        buyerName: o.buyer.username,
-        branchName: o.buyer.branchName,
-        buyerPhone: o.buyer.phone,
-        createdAt: o.createdAt,
-        adminNotes: o.adminNotes, // Include adminNotes
-        items: o.items.map(item => ({
-            id: item.id,
-            name: item.product?.name || "Produk Terhapus",
-            sku: item.product?.sku || "-",
-            unit: item.product?.unit || "Pcs",
-            imageUrl: item.product?.imageUrl || null,
-            quantity: item.quantity,
-            price: item.priceAtPurchase,
-        })),
-    }));
 
     return (
         <div className="space-y-8">

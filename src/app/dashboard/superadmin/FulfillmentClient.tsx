@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Download, Package, CheckCircle, Trash2, Check, XCircle, AlertTriangle, MessageCircle } from "lucide-react";
+import { Download, Package, CheckCircle, Trash2, Check, XCircle, AlertTriangle, MessageCircle, Edit } from "lucide-react";
 import OrderDetail, { OrderItemDetail } from "@/components/dashboard/OrderDetail";
 import dynamic from "next/dynamic";
 import { InvoicePDF } from "@/components/dashboard/InvoicePDF";
@@ -29,6 +29,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { EditOrderDialog } from "./orders/EditOrderDialog";
 
 type OrderRow = {
     id: string;
@@ -40,6 +41,7 @@ type OrderRow = {
     buyerPhone: string | null;
     createdAt: Date | string | number | null;
     adminNotes?: string | null;
+    tierId: string;
     items: OrderItemDetail[];
 };
 
@@ -51,6 +53,8 @@ export default function FulfillmentClient({ orders }: { orders: OrderRow[] }) {
     const [rejectingOrder, setRejectingOrder] = useState<string | null>(null);
     const [rejectReason, setRejectReason] = useState("");
     const [paperSize, setPaperSize] = useState<'full' | 'half' | 'large'>('full');
+    const [editingOrder, setEditingOrder] = useState<OrderRow | null>(null);
+    const [isEditOpen, setIsEditOpen] = useState(false);
 
     useEffect(() => {
         setIsClient(true);
@@ -117,6 +121,11 @@ export default function FulfillmentClient({ orders }: { orders: OrderRow[] }) {
                 toast.error(result?.error || "Gagal menghapus pesanan");
             }
         });
+    };
+
+    const handleEditClick = (order: OrderRow) => {
+        setEditingOrder(order);
+        setIsEditOpen(true);
     };
 
     if (orders.length === 0) {
@@ -301,6 +310,17 @@ export default function FulfillmentClient({ orders }: { orders: OrderRow[] }) {
                                     </Button>
                                 )}
 
+                                <Button
+                                    onClick={() => handleEditClick(order)}
+                                    disabled={isPending}
+                                    variant="outline"
+                                    size="icon"
+                                    className="border-neutral-200 text-neutral-600 hover:text-blue-600 hover:bg-neutral-50 h-9 w-9"
+                                    title="Edit Pesanan"
+                                >
+                                    <Edit className="h-4 w-4" />
+                                </Button>
+
                                 {/* SUPERADMIN Bypass Action */}
                                 <Button
                                     onClick={() => handleDeleteBypass(order.id)}
@@ -321,6 +341,22 @@ export default function FulfillmentClient({ orders }: { orders: OrderRow[] }) {
                     </div>
                 </div>
             ))}
+
+            <EditOrderDialog
+                isOpen={isEditOpen}
+                setIsOpen={setIsEditOpen}
+                orderId={editingOrder?.id || ""}
+                initialItems={(editingOrder?.items || []).map(item => ({
+                    productId: item.productId,
+                    name: item.name,
+                    sku: item.sku,
+                    unit: item.unit || "Pcs",
+                    priceAtPurchase: item.price,
+                    quantity: item.quantity,
+                    imageUrl: item.imageUrl
+                }))}
+                tierId={editingOrder?.tierId || ""}
+            />
         </div>
     );
 }

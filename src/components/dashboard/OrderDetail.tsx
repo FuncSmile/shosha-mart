@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export type OrderItemDetail = {
     id: string;
+    productId: string;
     name: string;
     sku: string;
     imageUrl: string | null;
