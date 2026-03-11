@@ -97,7 +97,7 @@ export default function ApprovalClient({ initialOrders }: { initialOrders: Order
                             </div>
                             <div className="flex items-center gap-2">
                                 <span className="font-bold text-lg text-neutral-900 leading-tight">
-                                    {order.buyerName} {order.branchName ? `(${order.branchName})` : ""}
+                                    {order.buyerName}
                                 </span>
                                 {order.buyerPhone && (
                                     <Button

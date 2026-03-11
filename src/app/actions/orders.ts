@@ -207,6 +207,114 @@ export async function importOrders(formData: FormData, targetTierId: string, all
 }
 
 
+export async function createOrderOnBehalf(
+    buyerId: string,
+    tierId: string,
+    cartItems: { productId: string; quantity: number; priceAtPurchase: number }[],
+    manualStatus: "SUCCESS" | "PROCESSED" = "SUCCESS",
+    manualDate?: number
+) {
+    if (!cartItems || cartItems.length === 0) {
+        return { error: "Keranjang kosong" };
+    }
+
+    const session = await getSession();
+    if (!session || session.role !== "SUPERADMIN") {
+        return { success: false, error: "Hanya SuperAdmin yang dapat membuat pesanan ini." };
+    }
+
+    try {
+        await db.transaction(async (tx) => {
+            // 1. Verify stock for all items
+            for (const item of cartItems) {
+                const productData = await tx.select({ stock: products.stock, name: products.name })
+                    .from(products)
+                    .where(eq(products.id, item.productId));
+
+                if (productData.length === 0) {
+                    throw new Error(`Produk tidak ditemukan`);
+                }
+
+                if (productData[0].stock < item.quantity) {
+                    throw new Error(`Stok produk ${productData[0].name} tidak mencukupi (Sisa: ${productData[0].stock})`);
+                }
+            }
+
+            // 2. Insert order header
+            const totalAmount = cartItems.reduce(
+                (sum, item) => sum + item.priceAtPurchase * item.quantity,
+                0
+            );
+
+            const [newOrder] = await tx
+                .insert(orders)
+                .values({
+                    buyerId,
+                    tierId,
+                    totalAmount,
+                    status: manualStatus,
+                    createdBy: session.id, // Record SuperAdmin ID
+                    adminNotes: "Created on behalf by SuperAdmin",
+                    ...(manualDate ? { createdAt: manualDate } : {})
+                })
+                .returning();
+
+            // 3. Insert order items
+            const itemsToInsert = cartItems.map((item) => ({
+                orderId: newOrder.id,
+                productId: item.productId,
+                quantity: item.quantity,
+                priceAtPurchase: item.priceAtPurchase,
+            }));
+
+            await tx.insert(orderItems).values(itemsToInsert);
+
+            // 4. Deduct stock
+            for (const item of cartItems) {
+                await tx.update(products)
+                    .set({ stock: sql`${products.stock} - ${item.quantity}` })
+                    .where(eq(products.id, item.productId));
+            }
+
+            // 5. Send WhatsApp Notification to Buyer
+            (async () => {
+                try {
+                    const buyer = await db.query.users.findFirst({
+                        where: eq(users.id, buyerId),
+                    });
+
+                    if (buyer) {
+                        const invoiceNumber = newOrder.id.split("-")[0].toUpperCase();
+                        const branchName = buyer.branchName || buyer.username || "-";
+                        
+                        const message = `Halo ${branchName}, pesanan Anda telah dibuat oleh Admin Pusat dengan nomor Invoice #${invoiceNumber}.\n\n` +
+                            `Status: ${manualStatus === "SUCCESS" ? "BERHASIL" : "DIPROSES"}\n` +
+                            `Total: Rp ${totalAmount.toLocaleString('id-ID')}\n\n` +
+                            `Silakan cek detailnya di dashboard ShoshaMart.`;
+                        
+                        // If buyer has phone, send notification
+                        if (buyer.phone) {
+                            // Ensure phone is in international format or handle accordingly
+                            const phone = buyer.phone.replace(/\D/g, '');
+                            const formattedPhone = phone.startsWith('0') ? '62' + phone.slice(1) : phone;
+                            await sendWhatsappReminder(formattedPhone, message);
+                        }
+                    }
+                } catch (error) {
+                    console.error("[WhatsApp Notification] Error in background task:", error);
+                }
+            })();
+        });
+
+        revalidatePath("/dashboard/superadmin");
+        revalidatePath("/dashboard/buyer/orders");
+        return { success: true, message: "Pesanan berhasil dibuat atas nama Buyer!" };
+    } catch (error: any) {
+        console.error("Failed to create order on behalf:", error);
+        return { success: false, error: error.message || "Gagal membuat pesanan." };
+    }
+}
+
 export async function submitOrder(
     buyerId: string,
     tierId: string,

@@ -11,55 +11,56 @@ import {
 
 // Register fonts if needed, for now we use standard
 const PAPER_SIZES = {
-    full: [684, 792], // 9.5 x 11 in
-    half: [684, 396], // 9.5 x 5.5 in
-    large: [1065.6, 792], // 14.8 x 11 in
+    full: [684, 792], // 9.5 x 11 in (Full)
+    half: [684, 396], // 9.5 x 5.5 in (Half - Dot Matrix)
+    folio: [595.28, 935.43], // 21 x 33 cm (Folio/F4)
+    large: [1065.6, 792], // 14.8 x 11 in (Large)
 };
 
 // Register fonts if needed, for now we use standard
 const styles = StyleSheet.create({
     page: {
-        paddingVertical: 15, // Reduced vertical padding to save space
-        paddingHorizontal: 30,
+        paddingTop: 10, // Reduced vertical padding to save space
+        paddingHorizontal: 40, // Increased to avoid cut-off on Dot Matrix printers (accounting for holes)
         fontSize: 10,
         fontFamily: "Helvetica",
         color: "#000",
     },
     header: {
         flexDirection: "row",
-        justifyContent: "space-between",
+        justifyContent: "space-evenly",
         alignItems: "flex-start",
-        marginBottom: 5, // Even tighter
+        marginBottom: 4,
         borderBottomWidth: 1,
         borderColor: "#000",
         paddingBottom: 3,
     },
     shopInfo: {
-        width: "35%",
+        width: "32%",
     },
     shopName: {
-        fontSize: 14, // More compact
+        fontSize: 12,
         fontWeight: "bold",
-        marginBottom: 2,
+        marginBottom: 1,
     },
     shopAddress: {
-        fontSize: 10,
+        fontSize: 9,
         lineHeight: 1.1,
     },
     invoiceTitleContainer: {
-        width: "30%",
+        width: "36%",
         textAlign: "center",
         justifyContent: "center",
-        paddingTop: 5,
+        paddingTop: 2,
     },
     invoiceTitle: {
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: "bold",
         textTransform: "uppercase",
         textDecoration: "underline",
     },
     invoiceInfo: {
-        width: "35%",
+        width: "30%",
         textAlign: "right",
     },
     infoRow: {
@@ -70,37 +71,59 @@ const styles = StyleSheet.create({
     infoLabel: {
         width: "40%",
         color: "#333",
-        fontSize: 12,
+        fontSize: 9,
     },
     infoValue: {
         width: "60%",
         fontWeight: "bold",
-        fontSize: 12,
+        fontSize: 9,
     },
     table: {
-        marginTop: 5, // Reduced from 10
-        width: "auto",
+        marginTop: 2,
+        width: "100%", // Explicit full width
         borderStyle: "solid",
         borderWidth: 1,
-        borderColor: "#000", // Black for Dot Matrix
+        borderColor: "#000",
         borderRightWidth: 0,
         borderBottomWidth: 0,
     },
     tableRow: {
-        margin: "auto",
         flexDirection: "row",
+        width: "100%",
     },
     tableColHeader: {
-        width: "40%",
+        width: "45%",
         borderStyle: "solid",
         borderWidth: 1,
         borderColor: "#000",
         borderLeftWidth: 0,
         borderTopWidth: 0,
         backgroundColor: "#f9f9f9",
-        padding: 3,
+        padding: 2,
     },
-    tableColHeaderSmall: {
+    tableColHeaderPrice: {
+        width: "25%",
+        borderStyle: "solid",
+        borderWidth: 1,
+        borderColor: "#000",
+        borderLeftWidth: 0,
+        borderTopWidth: 0,
+        backgroundColor: "#f9f9f9",
+        padding: 2,
+        textAlign: "center",
+    },
+    tableColHeaderQty: {
+        width: "10%",
+        borderStyle: "solid",
+        borderWidth: 1,
+        borderColor: "#000",
+        borderLeftWidth: 0,
+        borderTopWidth: 0,
+        backgroundColor: "#f9f9f9",
+        padding: 2,
+        textAlign: "center",
+    },
+    tableColHeaderSubtotal: {
         width: "20%",
         borderStyle: "solid",
         borderWidth: 1,
@@ -108,43 +131,53 @@ const styles = StyleSheet.create({
         borderLeftWidth: 0,
         borderTopWidth: 0,
         backgroundColor: "#f9f9f9",
-        padding: 3,
+        padding: 2,
         textAlign: "center",
     },
     tableCell: {
-        width: "40%",
+        width: "45%",
         borderStyle: "solid",
         borderWidth: 1,
         borderColor: "#000",
         borderLeftWidth: 0,
         borderTopWidth: 0,
-        padding: 3,
+        padding: 2,
     },
-    tableCellSmall: {
-        width: "20%",
+    tableCellPrice: {
+        width: "25%",
         borderStyle: "solid",
         borderWidth: 1,
         borderColor: "#000",
         borderLeftWidth: 0,
         borderTopWidth: 0,
-        padding: 3,
+        padding: 2,
         textAlign: "center",
     },
-    tableCellRight: {
+    tableCellQty: {
+        width: "10%",
+        borderStyle: "solid",
+        borderWidth: 1,
+        borderColor: "#000",
+        borderLeftWidth: 0,
+        borderTopWidth: 0,
+        padding: 2,
+        textAlign: "center",
+    },
+    tableCellSubtotal: {
         width: "20%",
         borderStyle: "solid",
         borderWidth: 1,
         borderColor: "#000",
         borderLeftWidth: 0,
         borderTopWidth: 0,
-        padding: 3,
+        padding: 2,
         textAlign: "right",
     },
     footerSection: {
-        marginTop: 10,
+        marginTop: 4,
         flexDirection: "row",
         justifyContent: "space-between",
-        alignItems: "flex-end", // Align signatures to bottom with total
+        alignItems: "flex-end",
     },
     totalBox: {
         width: "35%",
@@ -163,14 +196,15 @@ const styles = StyleSheet.create({
     },
     totalValue: {
         fontWeight: "bold",
-        fontSize: 11,
+        fontSize: 12,
         color: "#000",
     },
     terbilang: {
-        marginTop: 5,
+        marginTop: 1,
         fontStyle: "italic",
-        fontSize: 10,
+        fontSize: 9,
         color: "#333",
+        textAlign: "right",
     },
     signatureBox: {
         width: "25%",
@@ -178,7 +212,7 @@ const styles = StyleSheet.create({
         fontSize: 10,
     },
     signatureLabel: {
-        marginBottom: 25, // Space for sign
+        marginBottom: 15,
     },
     signatureLine: {
         borderTopWidth: 1,
@@ -259,23 +293,22 @@ export const InvoicePDF = ({ order, paperSize = 'full' }: InvoiceProps) => {
                 <View style={styles.table}>
                     <View style={styles.tableRow}>
                         <View style={styles.tableColHeader}><Text>Nama Barang (SKU)</Text></View>
-                        <View style={styles.tableColHeaderSmall}><Text>Harga/Satuan</Text></View>
-                        <View style={styles.tableColHeaderSmall}><Text>Qty</Text></View>
-                        <View style={styles.tableColHeaderSmall}><Text>Subtotal</Text></View>
+                        <View style={styles.tableColHeaderPrice}><Text>Harga/Satuan</Text></View>
+                        <View style={styles.tableColHeaderQty}><Text>Qty</Text></View>
+                        <View style={styles.tableColHeaderSubtotal}><Text>Subtotal</Text></View>
                     </View>
 
                     {order.items.map((item, index) => (
                         <View style={styles.tableRow} key={item.id} wrap={false}>
                             <View style={styles.tableCell}>
-                                <Text>{item.name}</Text>
-                                <Text style={{ fontSize: 10, color: "#333" }}>{item.sku}</Text>
+                                <Text style={{ fontSize: 9, fontWeight: "bold" }}>{item.name}</Text>
+                                <Text style={{ fontSize: 7, color: "#333" }}>{item.sku}</Text>
                             </View>
-                            <View style={styles.tableCellSmall}>
-                                <Text>{formatCurrency(item.price)}</Text>
-                                <Text style={{ fontSize: 10 }}>/{item.unit || "Pcs"}</Text>
+                            <View style={styles.tableCellPrice}>
+                                <Text style={{ fontSize: 9 }}>{formatCurrency(item.price)}/{item.unit || "Pcs"}</Text>
                             </View>
-                            <View style={styles.tableCellSmall}><Text>{item.quantity}</Text></View>
-                            <View style={styles.tableCellRight}><Text>{formatCurrency(item.price * item.quantity)}</Text></View>
+                            <View style={styles.tableCellQty}><Text style={{ fontSize: 9 }}>{item.quantity}</Text></View>
+                            <View style={styles.tableCellSubtotal}><Text style={{ fontSize: 9, fontWeight: "bold" }}>{formatCurrency(item.price * item.quantity)}</Text></View>
                         </View>
                     ))}
                 </View>

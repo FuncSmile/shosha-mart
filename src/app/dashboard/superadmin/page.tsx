@@ -10,6 +10,7 @@ import DashboardAnalytics from "@/components/dashboard/DashboardAnalytics";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { ImportOrderDialog } from "./orders/ImportOrderDialog";
+import { AdminOrderForm } from "./orders/AdminOrderForm";
 import StockAlert from "@/components/dashboard/StockAlert";
 import { products as productsTable } from "@/lib/db/schema";
 import { Metadata } from "next";
@@ -42,6 +43,7 @@ export default async function SuperAdminDashboard(
             id: true,
             username: true,
             branchName: true,
+            tierId: true,
         }
     });
 
@@ -142,6 +144,7 @@ export default async function SuperAdminDashboard(
                     <p className="text-neutral-500">Ringkasan performa seluruh tier dan total penjualan yang disetujui.</p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <AdminOrderForm buyers={branches} />
                     <ImportOrderDialog />
                 </div>
             </div>

@@ -6,16 +6,23 @@ import { Calendar as CalendarIcon, Download, Search } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import * as xlsx from "xlsx";
 import { Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
 
 import { cn, formatRupiah, formatRupiahCompact, getMonthName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -23,9 +30,10 @@ interface ReportDataProps {
     initialData: any;
     role: string;
     adminId?: string;
+    tiers?: { id: string; name: string }[];
 }
 
-export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
+export function ReportClient({ initialData, role, adminId, tiers }: ReportDataProps) {
     const [date, setDate] = React.useState<DateRange | undefined>({
         from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
         to: new Date(),
@@ -34,6 +42,7 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
     const [data, setData] = React.useState(initialData);
     const [isLoading, setIsLoading] = React.useState(false);
     const [searchQuery, setSearchQuery] = React.useState("");
+    const [selectedTierId, setSelectedTierId] = React.useState<string>("all");
 
     const filteredTransactions = React.useMemo(() => {
         if (!data.transactionList) return [];
@@ -63,7 +72,8 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
                         startDate: start,
                         endDate: end.getTime(),
                         role,
-                        adminId
+                        adminId,
+                        tierId: selectedTierId === "all" ? undefined : selectedTierId
                     });
                     if (result.success) {
                         setData(result);
@@ -79,7 +89,7 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
             // But we check time difference to see if it changed
             fetchData();
         }
-    }, [date, role, adminId]);
+    }, [date, role, adminId, selectedTierId]);
 
     const exportToExcel = () => {
         if (filteredTransactions.length === 0) return;
@@ -121,6 +131,8 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
             // Prepare data for this sheet
             const sheetData = transactions.map((t: any) => ({
                 "Tanggal": t.date,
+                "Nama Buyer": t.buyerName,
+                "Tier": t.tierName,
                 "Nama Barang": t.productName,
                 "Satuan": t.unit,
                 "Qty": t.quantity,
@@ -143,6 +155,8 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
             // Set column widths for better readability
             const wscols = [
                 { wch: 15 }, // Tanggal
+                { wch: 25 }, // Nama Buyer
+                { wch: 15 }, // Tier
                 { wch: 30 }, // Nama Barang
                 { wch: 10 }, // Satuan
                 { wch: 8 },  // Qty
@@ -201,6 +215,25 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
                             />
                         </PopoverContent>
                     </Popover>
+ 
+                    {role === "SUPERADMIN" && tiers && (
+                        <div className="flex items-center gap-2 ml-4">
+                            <span className="text-sm font-medium text-neutral-500 whitespace-nowrap">Tier:</span>
+                            <Select value={selectedTierId} onValueChange={setSelectedTierId}>
+                                <SelectTrigger className="w-[180px] bg-white">
+                                    <SelectValue placeholder="Semua Tier" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Semua Tier</SelectItem>
+                                    {tiers.map((tier) => (
+                                        <SelectItem key={tier.id} value={tier.id}>
+                                            {tier.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
 
                     <Button onClick={exportToExcel} variant="secondary" disabled={!data.transactionList?.length}>
                         <Download className="mr-2 h-4 w-4" />
@@ -322,6 +355,7 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
                             <TableRow>
                                 <TableHead>Tanggal</TableHead>
                                 <TableHead>Nama Buyer</TableHead>
+                                <TableHead>Tier</TableHead>
                                 <TableHead>Nama Barang</TableHead>
                                 <TableHead>Satuan</TableHead>
                                 <TableHead className="text-right">Qty</TableHead>
@@ -333,11 +367,16 @@ export function ReportClient({ initialData, role, adminId }: ReportDataProps) {
                                 filteredTransactions.map((t: any, i: number) => (
                                     <TableRow key={i}>
                                         <TableCell>{format(new Date(t.date), "dd MMM yyyy")}</TableCell>
-                                        <TableCell>{t.buyerName}</TableCell>
+                                        <TableCell className="font-medium">{t.buyerName}</TableCell>
+                                        <TableCell>
+                                            <span className="px-2 py-1 rounded-full text-[10px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-100">
+                                                {t.tierName}
+                                            </span>
+                                        </TableCell>
                                         <TableCell>{t.productName}</TableCell>
                                         <TableCell>{t.unit}</TableCell>
-                                        <TableCell className="text-right">{t.quantity}</TableCell>
-                                        <TableCell className="text-right">{formatRupiah(t.totalPrice)}</TableCell>
+                                        <TableCell className="text-right font-semibold">{t.quantity}</TableCell>
+                                        <TableCell className="text-right font-bold text-neutral-900">{formatRupiah(t.totalPrice)}</TableCell>
                                     </TableRow>
                                 ))
                             ) : (

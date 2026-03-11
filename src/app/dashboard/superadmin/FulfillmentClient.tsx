@@ -160,8 +160,8 @@ export default function FulfillmentClient({ orders }: { orders: OrderRow[] }) {
                             <div className="flex flex-col">
                                 <span className="text-[10px] text-neutral-400 uppercase tracking-wider">Pembeli</span>
                                 <div className="flex items-center gap-2">
-                                    <span className="font-bold text-lg text-neutral-800 leading-tight">
-                                        {order.buyerName} {order.branchName ? `(${order.branchName})` : ""}
+                                    <span className="font-bold text-md text-neutral-800 leading-tight">
+                                        {order.branchName ? `(${order.branchName})` : order.buyerName}
                                     </span>
                                     {order.buyerPhone && (
                                         <Button

@@ -96,12 +96,14 @@ export async function getReportData({
     role,
     adminId,
     branchId,
+    tierId,
 }: {
     startDate: number;
     endDate: number;
     role: string;
     adminId?: string;
     branchId?: string;
+    tierId?: string;
 }) {
     try {
         const session = await getSession();
@@ -120,6 +122,10 @@ export async function getReportData({
         if (branchId) {
             conditions.push(eq(orders.buyerId, branchId));
         }
+ 
+        if (tierId) {
+            conditions.push(eq(orders.tierId, tierId));
+        }
 
         let ordersQuery = db
             .select({
@@ -129,9 +135,11 @@ export async function getReportData({
                 buyerId: orders.buyerId,
                 buyerName: users.branchName,
                 buyerUsername: users.username,
+                tierName: tiers.name,
             })
             .from(orders)
             .innerJoin(users, eq(orders.buyerId, users.id))
+            .innerJoin(tiers, eq(orders.tierId, tiers.id))
             .where(and(...conditions));
 
         const filteredOrders = await ordersQuery;
@@ -181,6 +189,7 @@ export async function getReportData({
                     date: dateStr,
                     buyerId: order.buyerId,
                     buyerName: order.buyerName || order.buyerUsername,
+                    tierName: order.tierName,
                     productName: item.productName,
                     unit: item.unit,
                     quantity: item.quantity,

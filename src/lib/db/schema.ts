@@ -80,6 +80,7 @@ export const orders = sqliteTable("orders", {
   status: text("status").notNull(), // 'PENDING_APPROVAL', 'APPROVED', 'PACKING', 'REJECTED', 'PROCESSED'
   rejectionReason: text("rejection_reason"),
   adminNotes: text("admin_notes"), // Optional notes for audit logs (e.g. "Approved by SuperAdmin")
+  createdBy: text("created_by"), // ID of Admin who created this order on behalf of Buyer
   createdAt: integer("created_at").notNull().$defaultFn(() => Date.now()),
 }, (orders) => ({
   statusIdx: index("status_idx").on(orders.status),
