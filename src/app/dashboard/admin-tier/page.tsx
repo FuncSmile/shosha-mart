@@ -9,6 +9,8 @@ import DashboardAnalytics from "@/components/dashboard/DashboardAnalytics";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { Metadata } from "next";
+import PendingOrdersSection from "./PendingOrdersSection";
+import LoaderSkeleton from "@/components/dashboard/LoaderSkeleton";
 
 export const metadata: Metadata = {
     title: "Manajemen Pesanan",
@@ -24,13 +26,6 @@ export default async function AdminTierDashboard(
         redirect("/login");
     }
 
-    // Parse filters
-    const startDate = searchParams?.startDate ? parseInt(searchParams.startDate as string) : undefined;
-    const endDate = searchParams?.endDate ? parseInt(searchParams.endDate as string) : undefined;
-    const branchId = searchParams?.branchId ? searchParams.branchId as string : undefined;
-    const searchQuery = searchParams?.q ? searchParams.q as string : undefined;
-    const statusFilter = searchParams?.status ? (searchParams.status as string).split(",") : ["PENDING_APPROVAL"];
-
     // Fetch branches for filter dropdown (buyers created by this Admin_Tier)
     const branches = await db.query.users.findMany({
         where: eq(users.createdBy, session.id),
@@ -41,97 +36,28 @@ export default async function AdminTierDashboard(
         }
     });
 
-    const conditions: any[] = [
-        inArray(orders.status, statusFilter),
-        eq(orders.tierId, session.tierId)
-    ];
-
-    const now = new Date();
-    const defaultStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).setHours(0, 0, 0, 0);
-    const defaultEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000).setHours(23, 59, 59, 999);
-
-    const activeStart = startDate || defaultStart;
-    const activeEnd = endDate || defaultEnd;
-
-    conditions.push(gte(orders.createdAt, activeStart));
-    conditions.push(lte(orders.createdAt, activeEnd));
-
-    if (branchId) {
-        const isManaged = branches.some(b => b.id === branchId);
-        if (isManaged) {
-            conditions.push(eq(orders.buyerId, branchId));
-        } else {
-            conditions.push(eq(orders.buyerId, "invalid-branch")); // Prevent data leak
-        }
-    } else {
-        const managedBuyerIds = branches.map(b => b.id);
-        if (managedBuyerIds.length > 0) {
-            conditions.push(inArray(orders.buyerId, managedBuyerIds));
-        } else {
-            conditions.push(eq(orders.buyerId, "no-buyers-yet"));
-        }
-    }
-
-    // Search Logic
-    if (searchQuery) {
-        conditions.push(sql`(
-            ${users.username} LIKE ${`%${searchQuery}%`} OR 
-            ${users.branchName} LIKE ${`%${searchQuery}%`} OR 
-            ${orders.id} LIKE ${`%${searchQuery}%`}
-        )`);
-    }
-
-    const pendingOrders = await db.query.orders.findMany({
-        where: and(...conditions),
-        with: {
-            buyer: true,
-            items: {
-                with: {
-                    product: true,
-                },
-            },
-        },
-        orderBy: [desc(orders.createdAt)],
-    });
-
-    const formattedOrders = pendingOrders.map(o => ({
-        id: o.id,
-        totalAmount: o.totalAmount,
-        status: o.status,
-        buyerName: o.buyer.username,
-        branchName: o.buyer.branchName,
-        buyerPhone: o.buyer.phone,
-        createdAt: o.createdAt,
-        items: o.items.map(item => ({
-            id: item.id,
-            productId: item.productId,
-            name: item.product?.name || "Produk Terhapus",
-            sku: item.product?.sku || "-",
-            unit: item.product?.unit || "Pcs",
-            imageUrl: item.product?.imageUrl || null,
-            quantity: item.quantity,
-            price: item.priceAtPurchase,
-        })),
-    }));
-
     return (
         <div className="container mx-auto py-8 px-4">
             <h1 className="text-3xl font-bold mb-8">Manajemen Pesanan (Admin Tier)</h1>
 
             <DashboardFilters role="ADMIN_TIER" branches={branches} />
 
-            <Suspense fallback={<DashboardSkeleton />} key={`${startDate}-${endDate}-${branchId}`}>
+            <Suspense fallback={<DashboardSkeleton />} key={`analytics-${searchParams?.startDate}-${searchParams?.endDate}`}>
                 <DashboardAnalytics
                     role="ADMIN_TIER"
-                    startDate={startDate}
-                    endDate={endDate}
-                    branchId={branchId}
+                    startDate={searchParams?.startDate ? parseInt(searchParams.startDate as string) : undefined}
+                    endDate={searchParams?.endDate ? parseInt(searchParams.endDate as string) : undefined}
+                    branchId={searchParams?.branchId ? searchParams.branchId as string : undefined}
                 />
             </Suspense>
 
-            <div className="mt-12">
-                <ApprovalClient initialOrders={formattedOrders} />
-            </div>
+            <Suspense fallback={<LoaderSkeleton />}>
+                <PendingOrdersSection 
+                    searchParams={searchParams || {}} 
+                    session={{ id: session.id, tierId: session.tierId }}
+                    branches={branches}
+                />
+            </Suspense>
         </div>
     );
 }

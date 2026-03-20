@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition, useState } from "react";
+import { useTransition, useState, useOptimistic } from "react";
 import { approveOrder, rejectOrder } from "@/app/actions/orders";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import OrderDetail, { OrderItemDetail } from "@/components/dashboard/OrderDetail";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Loader2, CheckCircle, XCircle } from "lucide-react";
 
 type OrderRow = {
     id: string;
@@ -18,6 +18,7 @@ type OrderRow = {
     buyerName: string;
     branchName: string | null;
     buyerPhone: string | null;
+    buyerNote: string | null;
     createdAt: Date | string | number | null;
     items: OrderItemDetail[];
 };
@@ -26,8 +27,15 @@ export default function ApprovalClient({ initialOrders }: { initialOrders: Order
     const [isPending, startTransition] = useTransition();
     const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
 
+    const [optimisticOrders, setOptimisticOrders] = useOptimistic(
+        initialOrders,
+        (state, { orderId, newStatus }: { orderId: string, newStatus: string }) => 
+            state.map(o => o.id === orderId ? { ...o, status: newStatus } : o)
+    );
+
     const handleApprove = (orderId: string) => {
         startTransition(async () => {
+            setOptimisticOrders({ orderId, newStatus: 'APPROVED' });
             const result = await approveOrder(orderId);
             if (result?.success) {
                 toast.success(result.message);
@@ -45,6 +53,7 @@ export default function ApprovalClient({ initialOrders }: { initialOrders: Order
         }
 
         startTransition(async () => {
+            setOptimisticOrders({ orderId, newStatus: 'REJECTED' });
             const result = await rejectOrder(orderId, reason);
             if (result?.success) {
                 toast.success(result.message);
@@ -59,7 +68,7 @@ export default function ApprovalClient({ initialOrders }: { initialOrders: Order
         });
     };
 
-    if (initialOrders.length === 0) {
+    if (optimisticOrders.length === 0) {
         return (
             <div className="text-center py-12 bg-white rounded-lg border border-dashed border-neutral-300">
                 <p className="text-muted-foreground">Tidak ada pesanan yang sesuai dengan filter.</p>
@@ -72,11 +81,11 @@ export default function ApprovalClient({ initialOrders }: { initialOrders: Order
             case "PENDING_APPROVAL":
                 return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Menunggu</Badge>;
             case "APPROVED":
-                return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Disetujui</Badge>;
+                return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><CheckCircle className="w-3 h-3 mr-1" /> Disetujui</Badge>;
             case "PACKING":
                 return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">Packing</Badge>;
             case "REJECTED":
-                return <Badge variant="destructive">Ditolak</Badge>;
+                return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" /> Ditolak</Badge>;
             default:
                 return <Badge variant="outline">{status}</Badge>;
         }
@@ -84,8 +93,8 @@ export default function ApprovalClient({ initialOrders }: { initialOrders: Order
 
     return (
         <div className="space-y-4">
-            {initialOrders.map((order) => (
-                <div key={order.id} className="rounded-lg border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+            {optimisticOrders.map((order) => (
+                <div key={order.id} className={`rounded-lg border bg-white p-4 shadow-sm hover:shadow-md transition-all duration-300 ${isPending && order.status !== 'PENDING_APPROVAL' ? 'opacity-70 grayscale-[0.5]' : ''}`}>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
                         <div className="space-y-1">
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -115,6 +124,11 @@ export default function ApprovalClient({ initialOrders }: { initialOrders: Order
                                     </Button>
                                 )}
                             </div>
+                            {order.buyerNote && (
+                                <div className="mt-2 text-xs bg-amber-50 border border-amber-100 text-amber-800 p-2 rounded-md">
+                                    <span className="font-bold">Note Buyer:</span> {order.buyerNote}
+                                </div>
+                            )}
                         </div>
                         <div className="space-y-1">
                             <div className="text-xs text-muted-foreground">Nilai Pesanan</div>
@@ -134,12 +148,12 @@ export default function ApprovalClient({ initialOrders }: { initialOrders: Order
                                         />
                                         <Button
                                             onClick={() => handleReject(order.id)}
-                                            disabled={isPending}
+                                            disabled={isPending || !rejectionReasons[order.id]?.trim()}
                                             variant="destructive"
                                             size="sm"
                                             className="h-9 px-4"
                                         >
-                                            Tolak
+                                            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Tolak"}
                                         </Button>
                                     </div>
                                     <Button
@@ -148,11 +162,12 @@ export default function ApprovalClient({ initialOrders }: { initialOrders: Order
                                         size="sm"
                                         className="h-9 px-6 bg-green-600 hover:bg-green-700 text-white font-medium"
                                     >
-                                        Setujui
+                                        {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Setujui"}
                                     </Button>
                                 </>
                             ) : (
-                                <div className="text-xs text-muted-foreground italic">
+                                <div className="text-xs text-muted-foreground italic flex items-center gap-1">
+                                    {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                                     Pesanan sudah diproses
                                 </div>
                             )}

@@ -23,6 +23,7 @@ export const users = sqliteTable("users", {
   branchName: text("branch_name"), // Only for BUYER
   createdBy: text("created_by"), // ID of Admin who created this BUYER
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  hasCompletedTour: integer("has_completed_tour", { mode: "boolean" }).notNull().default(false),
 }, (users) => ({
   createdByIndex: index("created_by_idx").on(users.createdBy),
 }));
@@ -59,7 +60,10 @@ export const tierPrices = sqliteTable("tier_prices", {
   tierId: text("tier_id").notNull().references(() => tiers.id),
   price: integer("price"),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
-});
+}, (tp) => ({
+  productTierIdx: index("product_tier_idx").on(tp.productId, tp.tierId),
+  tierIdx: index("tier_idx").on(tp.tierId),
+}));
 
 export const tierPricesRelations = relations(tierPrices, ({ one }) => ({
   product: one(products, {
@@ -79,12 +83,13 @@ export const orders = sqliteTable("orders", {
   totalAmount: integer("total_amount").notNull(),
   status: text("status").notNull(), // 'PENDING_APPROVAL', 'APPROVED', 'PACKING', 'REJECTED', 'PROCESSED'
   rejectionReason: text("rejection_reason"),
+  buyerNote: text("buyer_note"),
   adminNotes: text("admin_notes"), // Optional notes for audit logs (e.g. "Approved by SuperAdmin")
   createdBy: text("created_by"), // ID of Admin who created this order on behalf of Buyer
   createdAt: integer("created_at").notNull().$defaultFn(() => Date.now()),
 }, (orders) => ({
   statusIdx: index("status_idx").on(orders.status),
-  buyerIdx: index("buyer_idx").on(orders.buyerId),
+  buyerStatusIdx: index("buyer_status_idx").on(orders.buyerId, orders.status),
   createdAtIdx: index("created_at_idx").on(orders.createdAt),
 }));
 
@@ -106,7 +111,10 @@ export const orderItems = sqliteTable("order_items", {
   productId: text("product_id").notNull().references(() => products.id),
   quantity: integer("quantity").notNull(),
   priceAtPurchase: integer("price_at_purchase").notNull(),
-});
+}, (oi) => ({
+  orderIdx: index("order_idx").on(oi.orderId),
+  productIdx: index("product_idx").on(oi.productId),
+}));
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
   order: one(orders, {

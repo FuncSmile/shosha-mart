@@ -57,6 +57,7 @@ export default function Sidebar({ menuItems, role, username, logoutAction }: Sid
                         return (
                             <Link
                                 key={`${item.name}-${item.href}`}
+                                id={item.href.includes('katalog') ? 'tour-sidebar-katalog' : undefined}
                                 href={item.href}
                                 onClick={() => setIsMobileOpen(false)}
                                 className={cn(

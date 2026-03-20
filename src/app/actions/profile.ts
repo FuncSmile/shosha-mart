@@ -88,6 +88,7 @@ export async function updateProfile(formData: FormData) {
             username: username,
             role: session.role,
             tierId: session.tierId,
+            hasCompletedTour: session.hasCompletedTour,
         });
 
         return { success: true, message: "Profil berhasil diperbarui!" };

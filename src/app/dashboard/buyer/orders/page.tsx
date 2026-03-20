@@ -92,8 +92,8 @@ export default async function BuyerOrdersPage(
             </div>
 
             <div className="space-y-4">
-                {myOrders.map((order) => (
-                    <Card key={order.id} className="overflow-hidden border-neutral-200 shadow-sm">
+                {myOrders.map((order, index) => (
+                    <Card key={order.id} id={index === 0 ? "tour-step-7" : undefined} className="overflow-hidden border-neutral-200 shadow-sm">
                         <div className="bg-neutral-50 px-6 py-4 border-b border-neutral-100">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -128,6 +128,12 @@ export default async function BuyerOrdersPage(
                                     {order.rejectionReason}
                                 </div>
                             )}
+                            {order.buyerNote && (
+                                <div className="mx-6 mt-4 p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
+                                    <span className="font-bold block mb-1">Catatan Anda:</span>
+                                    {order.buyerNote}
+                                </div>
+                            )}
                             <div className="px-6 py-2">
                                 <OrderDetail items={order.items} />
                             </div>
@@ -135,7 +141,39 @@ export default async function BuyerOrdersPage(
                     </Card>
                 ))}
 
-                {myOrders.length === 0 && (
+                {myOrders.length === 0 && session.hasCompletedTour === false && (
+                    <Card id="tour-step-7" className="overflow-hidden border-neutral-200 shadow-sm opacity-50 mt-4">
+                        <div className="bg-neutral-50 px-6 py-4 border-b border-neutral-100">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider">Ref ID</span>
+                                        <span className="font-mono text-xs font-semibold">DUMMY-ORDER</span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider">Tanggal</span>
+                                        <span className="text-sm font-medium">Hari ini</span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider">Status</span>
+                                        <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200">Menunggu Persetujuan</Badge>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider">Total Pembayaran</div>
+                                    <div className="text-xl font-bold text-blue-700">Rp 10.000</div>
+                                </div>
+                            </div>
+                        </div>
+                        <CardContent className="p-0">
+                            <div className="px-6 py-4 text-center text-sm text-neutral-500">
+                                Ini adalah pesanan contoh untuk panduan (Tour).
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {myOrders.length === 0 && session.hasCompletedTour !== false && (
                     <div className="text-center py-20 bg-white border border-dashed rounded-2xl border-neutral-200 text-neutral-400">
                         Belum ada pesanan yang dibuat.
                     </div>

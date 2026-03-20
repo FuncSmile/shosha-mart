@@ -18,7 +18,7 @@ export default async function BuyerDashboard() {
 
     return (
         <div className="container mx-auto py-8 px-4">
-            <h1 className="text-3xl font-bold mb-8 text-neutral-800 tracking-tight">Dashboard Statistik</h1>
+            <h1 id="tour-dashboard-welcome" className="text-3xl font-bold mb-8 text-neutral-800 tracking-tight">Dashboard Statistik</h1>
 
             <Suspense fallback={<DashboardSkeleton />}>
                 <DashboardAnalytics role="BUYER" />

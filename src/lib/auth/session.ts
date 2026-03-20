@@ -9,6 +9,7 @@ export type SessionPayload = {
     username: string;
     role: string;
     tierId: string | null;
+    hasCompletedTour: boolean;
 };
 
 export async function encrypt(payload: SessionPayload) {

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq, desc, ne, and, like, or, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { getSession } from "@/lib/auth/session";
+import { getSession, createSession } from "@/lib/auth/session";
 import { revalidatePath } from "next/cache";
 
 // Ensure only SUPERADMIN can perform these actions
@@ -191,5 +191,23 @@ export async function deleteUser(id: string) {
     } catch (error) {
         console.error("Failed to delete user:", error);
         return { success: false, message: "Gagal menghapus user" };
+    }
+}
+
+export async function completeTour() {
+    const session = await getSession();
+    if (!session) return { success: false, message: "Unauthorized" };
+
+    try {
+        await db.update(users).set({ hasCompletedTour: true }).where(eq(users.id, session.id));
+        
+        session.hasCompletedTour = true;
+        await createSession(session);
+
+        revalidatePath("/");
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to complete tour:", error);
+        return { success: false };
     }
 }

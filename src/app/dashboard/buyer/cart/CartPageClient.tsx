@@ -14,6 +14,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
 
 import { toast } from "sonner";
 
@@ -27,12 +28,15 @@ export default function CartPageClient({
     const [mounted, setMounted] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [manualDate, setManualDate] = useState<Date | undefined>(new Date());
+    const [buyerNote, setBuyerNote] = useState("");
     const router = useRouter();
+    const [isTourActive, setIsTourActive] = useState(false);
 
     const { cart, removeFromCart, updateQuantity, clearCart, getTotalPrice, getTotalItems } = useCartStore();
 
     useEffect(() => {
         setMounted(true);
+        setIsTourActive(localStorage.getItem("product-tour-active") === "true");
     }, []);
 
     if (!mounted) {
@@ -68,7 +72,8 @@ export default function CartPageClient({
                 buyerId,
                 tierId,
                 itemsToSubmit,
-                manualDate ? manualDate.getTime() : undefined
+                manualDate ? manualDate.getTime() : undefined,
+                buyerNote
             );
 
             if (result?.success) {
@@ -85,7 +90,7 @@ export default function CartPageClient({
         }
     };
 
-    if (cartItems.length === 0) {
+    if (cartItems.length === 0 && !isTourActive) {
         return (
             <div className="bg-white rounded-2xl border border-neutral-100 p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
                 <div className="bg-neutral-50 w-24 h-24 rounded-full flex items-center justify-center mb-6">
@@ -102,6 +107,17 @@ export default function CartPageClient({
         );
     }
 
+    const displayItems = cartItems.length > 0 ? cartItems : isTourActive ? [{
+        id: "dummy",
+        name: "Produk Contoh (Tour)",
+        sku: "DUMMY",
+        unit: "Pcs",
+        imageUrl: null,
+        tierPrice: 10000,
+        quantity: 1,
+        stock: 100,
+    } as any] : [];
+
     return (
         <div className="flex flex-col lg:flex-row gap-8">
             <div className="flex-1 space-y-6">
@@ -111,7 +127,7 @@ export default function CartPageClient({
                 </Link>
 
                 <div className="space-y-4">
-                    {cartItems.map((item) => (
+                    {displayItems.map((item, index) => (
                         <div key={item.id} className="bg-white border rounded-xl p-4 flex gap-4 items-center shadow-sm">
                             <div className="border border-neutral-100 rounded-lg aspect-square w-24 h-24 flex items-center justify-center overflow-hidden bg-neutral-50 shrink-0">
                                 {item.imageUrl ? (
@@ -140,7 +156,7 @@ export default function CartPageClient({
                             </div>
 
                             <div className="flex flex-col items-end gap-3 shrink-0">
-                                <div className="flex items-center border rounded-lg overflow-hidden bg-white shadow-sm">
+                                <div id={index === 0 ? "tour-step-5" : undefined} className="flex items-center border rounded-lg overflow-hidden bg-white shadow-sm">
                                     <button
                                         className="px-3 py-2 hover:bg-neutral-100 text-neutral-600 transition-colors disabled:opacity-50"
                                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
@@ -220,7 +236,18 @@ export default function CartPageClient({
                             </Popover>
                         </div>
 
+                        <div className="space-y-2 mb-6">
+                            <label className="text-sm font-medium text-neutral-700">Catatan Pesanan (Optional)</label>
+                            <Textarea
+                                placeholder="Contoh: Untuk Lembur, atau instruksi khusus lainnya..."
+                                value={buyerNote}
+                                onChange={(e) => setBuyerNote(e.target.value)}
+                                className="min-h-[100px] resize-none"
+                            />
+                        </div>
+
                         <Button
+                            id="tour-step-6"
                             size="lg"
                             className="w-full text-base font-medium h-12"
                             onClick={handleCheckout}

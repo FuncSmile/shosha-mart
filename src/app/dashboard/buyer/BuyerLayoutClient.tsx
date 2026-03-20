@@ -7,10 +7,12 @@ import { useEffect, useState } from "react";
 
 export default function BuyerLayoutClient({
     children,
-    userId
+    userId,
+    hasCompletedTour
 }: {
     children: React.ReactNode;
     userId: string;
+    hasCompletedTour?: boolean;
 }) {
     const [mounted, setMounted] = useState(false);
 
@@ -41,8 +43,8 @@ export default function BuyerLayoutClient({
             {children}
 
             {/* Floating Action Button for Cart */}
-            {mounted && totalItems > 0 && (
-                <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50">
+            {mounted && (totalItems > 0 || !hasCompletedTour) && (
+                <div id="tour-step-4" className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50">
                     <Link href="/dashboard/buyer/cart">
                         <div className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg flex items-center justify-center relative cursor-pointer transition-transform hover:scale-110 active:scale-95">
                             <ShoppingCart className="w-6 h-6" />

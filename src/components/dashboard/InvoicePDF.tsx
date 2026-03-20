@@ -231,6 +231,7 @@ type InvoiceProps = {
         branchName?: string | null;
         tierName?: string;
         createdAt?: Date | string | number | null;
+        buyerNote?: string | null;
         items: OrderItemDetail[];
     };
     paperSize?: 'full' | 'half' | 'large';
@@ -312,6 +313,15 @@ export const InvoicePDF = ({ order, paperSize = 'full' }: InvoiceProps) => {
                         </View>
                     ))}
                 </View>
+                
+                {/* Buyer Note if exists */}
+                {order.buyerNote && (
+                    <View style={{ marginTop: 5, padding: 5, backgroundColor: "#f9f9f9", border: 1, borderColor: "#000", borderStyle: "dashed" }}>
+                        <Text style={{ fontSize: 8, fontStyle: "italic" }}>
+                            Catatan Buyer: {order.buyerNote}
+                        </Text>
+                    </View>
+                )}
 
                 {/* Footer: Signatures + Total in One Row */}
                 <View style={styles.footerSection} wrap={false}>

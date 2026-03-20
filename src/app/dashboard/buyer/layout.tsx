@@ -9,7 +9,7 @@ export default async function BuyerLayout({
     const session = await getSession();
 
     return (
-        <BuyerLayoutClient userId={session?.id ?? ""}>
+        <BuyerLayoutClient userId={session?.id ?? ""} hasCompletedTour={session?.hasCompletedTour ?? false}>
             {children}
         </BuyerLayoutClient>
     );

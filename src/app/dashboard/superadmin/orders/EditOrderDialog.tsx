@@ -16,6 +16,7 @@ import { updateOrderItems } from "@/app/actions/orders";
 import { getProductsForBuyer } from "@/app/actions/products";
 import { toast } from "sonner";
 import Image from "next/image";
+import { Textarea } from "@/components/ui/textarea";
 
 type EditableItem = {
     productId: string;
@@ -32,25 +33,33 @@ export function EditOrderDialog({
     setIsOpen,
     orderId,
     initialItems,
-    tierId
+    tierId,
+    initialBuyerNote,
+    initialAdminNotes,
 }: {
     isOpen: boolean;
     setIsOpen: (open: boolean) => void;
     orderId: string;
     initialItems: EditableItem[];
     tierId: string;
+    initialBuyerNote?: string;
+    initialAdminNotes?: string;
 }) {
     const [items, setItems] = useState<EditableItem[]>(initialItems);
     const [searchTerm, setSearchTerm] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [buyerNote, setBuyerNote] = useState(initialBuyerNote || "");
+    const [adminNotes, setAdminNotes] = useState(initialAdminNotes || "");
 
     useEffect(() => {
         if (isOpen) {
             setItems(JSON.parse(JSON.stringify(initialItems)));
+            setBuyerNote(initialBuyerNote || "");
+            setAdminNotes(initialAdminNotes || "");
         }
-    }, [isOpen, initialItems]);
+    }, [isOpen, initialItems, initialBuyerNote, initialAdminNotes]);
 
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
@@ -116,22 +125,29 @@ export function EditOrderDialog({
         }
 
         setIsSaving(true);
-        const res = await updateOrderItems(
-            orderId,
-            items.map(i => ({
-                productId: i.productId,
-                quantity: i.quantity,
-                priceAtPurchase: i.priceAtPurchase
-            }))
-        );
+        try {
+            const res = await updateOrderItems(
+                orderId,
+                items.map(i => ({
+                    productId: i.productId,
+                    quantity: i.quantity,
+                    priceAtPurchase: i.priceAtPurchase
+                })),
+                buyerNote,
+                adminNotes
+            );
 
-        if (res.success) {
-            toast.success("message" in res ? res.message : "Pesanan berhasil diperbarui!");
-            setIsOpen(false);
-        } else {
-            toast.error("error" in res ? res.error : "Gagal memperbarui pesanan.");
+            if (res.success) {
+                toast.success("message" in res ? res.message : "Pesanan berhasil diperbarui!");
+                setIsOpen(false);
+            } else {
+                toast.error("error" in res ? res.error : "Gagal memperbarui pesanan.");
+            }
+        } catch (error) {
+            toast.error("Terjadi kesalahan teknis saat memperbarui pesanan.");
+        } finally {
+            setIsSaving(false);
         }
-        setIsSaving(false);
     };
 
     const totalAmount = items.reduce((sum, item) => sum + (item.priceAtPurchase * item.quantity), 0);
@@ -259,6 +275,27 @@ export function EditOrderDialog({
                                 )}
                             </TableBody>
                         </Table>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-neutral-700">Catatan Buyer</label>
+                            <Textarea 
+                                placeholder="Edit pesan khusus buyer..." 
+                                value={buyerNote} 
+                                onChange={(e) => setBuyerNote(e.target.value)}
+                                className="resize-none text-xs"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-neutral-700">Catatan Admin Internal</label>
+                            <Textarea 
+                                placeholder="Contoh: Disetujui karena..." 
+                                value={adminNotes} 
+                                onChange={(e) => setAdminNotes(e.target.value)}
+                                className="resize-none text-xs"
+                            />
+                        </div>
                     </div>
                 </div>
 

@@ -9,6 +9,7 @@ import * as xlsx from "xlsx";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import { sendWhatsappReminder } from "@/lib/whatsapp";
+import { withTimeout } from "@/lib/utils/timeout";
 
 const sanitizePrice = (val: any): number => {
     if (typeof val === 'number') return Math.floor(val);
@@ -61,149 +62,162 @@ const sanitizePrice = (val: any): number => {
 };
 
 export async function importOrders(formData: FormData, targetTierId: string, allowNegativeStock: boolean = false) {
-    try {
-        const session = await getSession();
-        if (!session || session.role !== "SUPERADMIN") {
-            return { success: false, error: "Hanya SuperAdmin yang dapat mengimport data." };
-        }
+    return await withTimeout((async () => {
+        try {
+            const session = await getSession();
+            if (!session || session.role !== "SUPERADMIN") {
+                return { success: false, error: "Hanya SuperAdmin yang dapat mengimport data." };
+            }
 
-        const file = formData.get("file") as File;
-        if (!file) return { success: false, error: "File tidak ditemukan." };
+            const file = formData.get("file") as File;
+            if (!file) return { success: false, error: "File tidak ditemukan." };
 
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const wb = xlsx.read(buffer, { type: "buffer" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
+            const buffer = Buffer.from(await file.arrayBuffer());
+            const wb = xlsx.read(buffer, { type: "buffer" });
+            const ws = wb.Sheets[wb.SheetNames[0]];
 
-        const cellA1 = ws['A1']?.v;
-        if (!cellA1) return { success: false, error: "Nama cabang (Cell A1) tidak ditemukan." };
+            const cellA1 = ws['A1']?.v;
+            if (!cellA1) return { success: false, error: "Nama cabang (Cell A1) tidak ditemukan." };
 
-        const branchName = String(cellA1).replace(/CABANG:?\s*/i, "").trim();
+            const branchName = String(cellA1).replace(/CABANG:?\s*/i, "").trim();
 
-        const branchUser = await db.query.users.findFirst({
-            where: and(eq(users.role, "BUYER"), eq(users.branchName, branchName))
-        });
+            const branchUser = await db.query.users.findFirst({
+                where: and(eq(users.role, "BUYER"), eq(users.branchName, branchName))
+            });
 
-        if (!branchUser) {
-            return { success: false, error: `Cabang '${branchName}' tidak ditemukan di database.` };
-        }
+            if (!branchUser) {
+                return { success: false, error: `Cabang '${branchName}' tidak ditemukan di database.` };
+            }
 
-        const data = xlsx.utils.sheet_to_json(ws, { range: 1 });
-        if (data.length === 0) return { success: false, error: "Data pesanan tidak ditemukan." };
+            const data = xlsx.utils.sheet_to_json(ws, { range: 1 });
+            if (data.length === 0) return { success: false, error: "Data pesanan tidak ditemukan." };
 
-        return await db.transaction(async (tx) => {
-            let successCount = 0;
-            let fallbackCount = 0;
-            const errors: string[] = [];
-            const ordersGroupedByDate = new Map<string, any[]>();
-
-            for (let i = 0; i < data.length; i++) {
-                const row = data[i] as any;
-                const dateRaw = row["TANGGAL"];
-                const productName = row["NAMA BARANG"];
-                const qty = Number(row["QTY"]);
-                const rawPriceUnit = row["HARGA UNIT"];
-
-                if (!productName || isNaN(qty)) continue;
-
-                // 1. Find Product
-                const product = await tx.query.products.findFirst({
-                    where: eq(products.name, productName),
-                    with: {
-                        tierPrices: {
-                            where: (tp, { eq }) => eq(tp.tierId, targetTierId)
+            // 1. Pre-fetch all unique product names from Excel
+            const productNames = Array.from(new Set(data.map((row: any) => row["NAMA BARANG"]).filter(Boolean)));
+            
+            let allProducts: any[] = [];
+            if (productNames.length > 0) {
+                const chunkSize = 900;
+                for (let i = 0; i < productNames.length; i += chunkSize) {
+                    const chunk = productNames.slice(i, i + chunkSize);
+                    const batch = await db.query.products.findMany({
+                        where: inArray(products.name, chunk),
+                        with: {
+                            tierPrices: {
+                                where: (tp, { eq }) => eq(tp.tierId, targetTierId)
+                            }
                         }
+                    });
+                    allProducts = [...allProducts, ...batch];
+                }
+            }
+            
+            const productMap = new Map(allProducts.map(p => [p.name, p]));
+
+            return await db.transaction(async (tx) => {
+                let successCount = 0;
+                let fallbackCount = 0;
+                const errors: string[] = [];
+                const ordersGroupedByDate = new Map<string, any[]>();
+
+                for (let i = 0; i < data.length; i++) {
+                    const row = data[i] as any;
+                    const dateRaw = row["TANGGAL"];
+                    const productName = row["NAMA BARANG"];
+                    const qty = Number(row["QTY"]);
+                    const rawPriceUnit = row["HARGA UNIT"];
+
+                    if (!productName || isNaN(qty)) continue;
+
+                    const product = productMap.get(productName);
+
+                    if (!product) {
+                        errors.push(`Baris ${i + 3}: Produk '${productName}' tidak ditemukan.`);
+                        continue;
                     }
-                });
 
-                if (!product) {
-                    errors.push(`Baris ${i + 3}: Produk '${productName}' tidak ditemukan.`);
-                    continue;
-                }
+                    let priceAtPurchase = sanitizePrice(rawPriceUnit);
 
-                // 2. Resolve Price Hierarchy
-                // Hierarchy: Excel (>0) -> Tier Price -> Base Price
-                let priceAtPurchase = sanitizePrice(rawPriceUnit);
-
-                if (priceAtPurchase <= 0) {
-                    // Fallback to Tier Price
-                    const tierPriceObj = product.tierPrices?.[0];
-                    if (tierPriceObj && tierPriceObj.price !== null) {
-                        priceAtPurchase = tierPriceObj.price;
-                        console.log(`[Import Info] Baris ${i + 3}: Menggunakan harga TIER (Rp ${priceAtPurchase}) untuk '${productName}'`);
-                    } else {
-                        // Fallback to Base Price
-                        priceAtPurchase = product.basePrice;
-                        console.log(`[Import Info] Baris ${i + 3}: Menggunakan harga BASE (Rp ${priceAtPurchase}) untuk '${productName}'`);
+                    if (priceAtPurchase <= 0) {
+                        const tierPriceObj = product.tierPrices?.[0];
+                        if (tierPriceObj && tierPriceObj.price !== null) {
+                            priceAtPurchase = tierPriceObj.price;
+                        } else {
+                            priceAtPurchase = product.basePrice;
+                        }
+                        fallbackCount++;
                     }
-                    fallbackCount++;
+
+                    if (!allowNegativeStock && product.stock < qty) {
+                        throw new Error(`Stok '${productName}' tidak mencukupi di baris ${i + 3} (Tersedia: ${product.stock}, Perlu: ${qty}).`);
+                    }
+
+                    const dateStr = dateRaw ? (typeof dateRaw === 'number' ?
+                        new Date((dateRaw - 25569) * 86400 * 1000).toISOString().split('T')[0] :
+                        String(dateRaw)) : new Date().toISOString().split('T')[0];
+
+                    if (!ordersGroupedByDate.has(dateStr)) {
+                        ordersGroupedByDate.set(dateStr, []);
+                    }
+                    ordersGroupedByDate.get(dateStr)?.push({
+                        productId: product.id,
+                        quantity: qty,
+                        priceAtPurchase,
+                        name: productName
+                    });
+                    
+                    // Update local stock for subsequent rows in the same import
+                    product.stock -= qty;
                 }
 
-                if (!allowNegativeStock && product.stock < qty) {
-                    throw new Error(`Stok '${productName}' tidak mencukupi di baris ${i + 3} (Tersedia: ${product.stock}, Perlu: ${qty}).`);
+                if (ordersGroupedByDate.size === 0) {
+                    throw new Error("Tidak ada data valid untuk diimport. " + errors.join(", "));
                 }
 
-                const dateStr = dateRaw ? (typeof dateRaw === 'number' ?
-                    new Date((dateRaw - 25569) * 86400 * 1000).toISOString().split('T')[0] :
-                    String(dateRaw)) : new Date().toISOString().split('T')[0];
+                for (const [date, items] of Array.from(ordersGroupedByDate.entries())) {
+                    const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.priceAtPurchase), 0);
 
-                if (!ordersGroupedByDate.has(dateStr)) {
-                    ordersGroupedByDate.set(dateStr, []);
-                }
-                ordersGroupedByDate.get(dateStr)?.push({
-                    productId: product.id,
-                    quantity: qty,
-                    priceAtPurchase,
-                    name: productName
-                });
-            }
+                    const [newOrder] = await tx.insert(orders).values({
+                        buyerId: branchUser.id,
+                        tierId: targetTierId,
+                        totalAmount,
+                        status: "SUCCESS",
+                        createdAt: new Date(date).getTime()
+                    }).returning();
 
-            if (ordersGroupedByDate.size === 0) {
-                throw new Error("Tidak ada data valid untuk diimport. " + errors.join(", "));
-            }
+                    await tx.insert(orderItems).values(
+                        items.map(item => ({
+                            orderId: newOrder.id,
+                            productId: item.productId,
+                            quantity: item.quantity,
+                            priceAtPurchase: item.priceAtPurchase
+                        }))
+                    );
 
-            for (const [date, items] of Array.from(ordersGroupedByDate.entries())) {
-                const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.priceAtPurchase), 0);
+                    for (const item of items) {
+                        await tx.update(products)
+                            .set({ stock: sql`${products.stock} - ${item.quantity}` })
+                            .where(eq(products.id, item.productId));
+                    }
 
-                const [newOrder] = await tx.insert(orders).values({
-                    buyerId: branchUser.id,
-                    tierId: targetTierId,
-                    totalAmount,
-                    status: "SUCCESS",
-                    createdAt: new Date(date).getTime()
-                }).returning();
-
-                await tx.insert(orderItems).values(
-                    items.map(item => ({
-                        orderId: newOrder.id,
-                        productId: item.productId,
-                        quantity: item.quantity,
-                        priceAtPurchase: item.priceAtPurchase
-                    }))
-                );
-
-                for (const item of items) {
-                    await tx.update(products)
-                        .set({ stock: sql`${products.stock} - ${item.quantity}` })
-                        .where(eq(products.id, item.productId));
+                    successCount++;
                 }
 
-                successCount++;
-            }
+                revalidatePath("/dashboard/superadmin");
+                revalidatePath("/dashboard/admin-tier/reports");
 
-            revalidatePath("/dashboard/superadmin");
-            revalidatePath("/dashboard/admin-tier/reports");
+                return {
+                    success: true,
+                    message: `Berhasil mengimport ${successCount} pesanan. ${fallbackCount} harga diambil dari database (Tier/Base) karena kolom Excel kosong.`,
+                    errors: errors.length > 0 ? errors : undefined
+                };
+            });
 
-            return {
-                success: true,
-                message: `Berhasil mengimport ${successCount} pesanan. ${fallbackCount} harga diambil dari database (Tier/Base) karena kolom Excel kosong.`,
-                errors: errors.length > 0 ? errors : undefined
-            };
-        });
-
-    } catch (error: any) {
-        console.error("Import failed:", error);
-        return { success: false, error: error.message || "Gagal mengimport pesanan." };
-    }
+        } catch (error: any) {
+            console.error("Import failed:", error);
+            return { success: false, error: error.message || "Gagal mengimport pesanan." };
+        }
+    })(), 8000);
 }
 
 
@@ -212,221 +226,228 @@ export async function createOrderOnBehalf(
     tierId: string,
     cartItems: { productId: string; quantity: number; priceAtPurchase: number }[],
     manualStatus: "SUCCESS" | "PROCESSED" = "SUCCESS",
-    manualDate?: number
+    manualDate?: number,
+    buyerNote?: string
 ) {
-    if (!cartItems || cartItems.length === 0) {
-        return { error: "Keranjang kosong" };
-    }
+    return await withTimeout((async () => {
+        if (!cartItems || cartItems.length === 0) {
+            return { error: "Keranjang kosong" };
+        }
 
-    const session = await getSession();
-    if (!session || session.role !== "SUPERADMIN") {
-        return { success: false, error: "Hanya SuperAdmin yang dapat membuat pesanan ini." };
-    }
+        const session = await getSession();
+        if (!session || session.role !== "SUPERADMIN") {
+            return { success: false, error: "Hanya SuperAdmin yang dapat membuat pesanan ini." };
+        }
 
-    try {
-        await db.transaction(async (tx) => {
-            // 1. Verify stock for all items
-            for (const item of cartItems) {
-                const productData = await tx.select({ stock: products.stock, name: products.name })
-                    .from(products)
-                    .where(eq(products.id, item.productId));
+        try {
+            await db.transaction(async (tx) => {
+                // 1. Verify stock for all items
+                for (const item of cartItems) {
+                    const productData = await tx.select({ stock: products.stock, name: products.name })
+                        .from(products)
+                        .where(eq(products.id, item.productId));
 
-                if (productData.length === 0) {
-                    throw new Error(`Produk tidak ditemukan`);
-                }
-
-                if (productData[0].stock < item.quantity) {
-                    throw new Error(`Stok produk ${productData[0].name} tidak mencukupi (Sisa: ${productData[0].stock})`);
-                }
-            }
-
-            // 2. Insert order header
-            const totalAmount = cartItems.reduce(
-                (sum, item) => sum + item.priceAtPurchase * item.quantity,
-                0
-            );
-
-            const [newOrder] = await tx
-                .insert(orders)
-                .values({
-                    buyerId,
-                    tierId,
-                    totalAmount,
-                    status: manualStatus,
-                    createdBy: session.id, // Record SuperAdmin ID
-                    adminNotes: "Created on behalf by SuperAdmin",
-                    ...(manualDate ? { createdAt: manualDate } : {})
-                })
-                .returning();
-
-            // 3. Insert order items
-            const itemsToInsert = cartItems.map((item) => ({
-                orderId: newOrder.id,
-                productId: item.productId,
-                quantity: item.quantity,
-                priceAtPurchase: item.priceAtPurchase,
-            }));
-
-            await tx.insert(orderItems).values(itemsToInsert);
-
-            // 4. Deduct stock
-            for (const item of cartItems) {
-                await tx.update(products)
-                    .set({ stock: sql`${products.stock} - ${item.quantity}` })
-                    .where(eq(products.id, item.productId));
-            }
-
-            // 5. Send WhatsApp Notification to Buyer
-            (async () => {
-                try {
-                    const buyer = await db.query.users.findFirst({
-                        where: eq(users.id, buyerId),
-                    });
-
-                    if (buyer) {
-                        const invoiceNumber = newOrder.id.split("-")[0].toUpperCase();
-                        const branchName = buyer.branchName || buyer.username || "-";
-                        
-                        const message = `Halo ${branchName}, pesanan Anda telah dibuat oleh Admin Pusat dengan nomor Invoice #${invoiceNumber}.\n\n` +
-                            `Status: ${manualStatus === "SUCCESS" ? "BERHASIL" : "DIPROSES"}\n` +
-                            `Total: Rp ${totalAmount.toLocaleString('id-ID')}\n\n` +
-                            `Silakan cek detailnya di dashboard ShoshaMart.`;
-                        
-                        // If buyer has phone, send notification
-                        if (buyer.phone) {
-                            // Ensure phone is in international format or handle accordingly
-                            const phone = buyer.phone.replace(/\D/g, '');
-                            const formattedPhone = phone.startsWith('0') ? '62' + phone.slice(1) : phone;
-                            await sendWhatsappReminder(formattedPhone, message);
-                        }
+                    if (productData.length === 0) {
+                        throw new Error(`Produk tidak ditemukan`);
                     }
-                } catch (error) {
-                    console.error("[WhatsApp Notification] Error in background task:", error);
-                }
-            })();
-        });
 
-        revalidatePath("/dashboard/superadmin");
-        revalidatePath("/dashboard/buyer/orders");
-        return { success: true, message: "Pesanan berhasil dibuat atas nama Buyer!" };
-    } catch (error: any) {
-        console.error("Failed to create order on behalf:", error);
-        return { success: false, error: error.message || "Gagal membuat pesanan." };
-    }
+                    if (productData[0].stock < item.quantity) {
+                        throw new Error(`Stok produk ${productData[0].name} tidak mencukupi (Sisa: ${productData[0].stock})`);
+                    }
+                }
+
+                // 2. Insert order header
+                const totalAmount = cartItems.reduce(
+                    (sum, item) => sum + item.priceAtPurchase * item.quantity,
+                    0
+                );
+
+                const [newOrder] = await tx
+                    .insert(orders)
+                    .values({
+                        buyerId,
+                        tierId,
+                        totalAmount,
+                        status: manualStatus,
+                        buyerNote,
+                        createdBy: session.id, // Record SuperAdmin ID
+                        adminNotes: "Created on behalf by SuperAdmin",
+                        ...(manualDate ? { createdAt: manualDate } : {})
+                    })
+                    .returning();
+
+                // 3. Insert order items
+                const itemsToInsert = cartItems.map((item) => ({
+                    orderId: newOrder.id,
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    priceAtPurchase: item.priceAtPurchase,
+                }));
+
+                await tx.insert(orderItems).values(itemsToInsert);
+
+                // 4. Deduct stock
+                for (const item of cartItems) {
+                    await tx.update(products)
+                        .set({ stock: sql`${products.stock} - ${item.quantity}` })
+                        .where(eq(products.id, item.productId));
+                }
+
+                // 5. Send WhatsApp Notification to Buyer
+                (async () => {
+                    try {
+                        const buyer = await db.query.users.findFirst({
+                            where: eq(users.id, buyerId),
+                        });
+
+                        if (buyer) {
+                            const invoiceNumber = newOrder.id.split("-")[0].toUpperCase();
+                            const branchName = buyer.branchName || buyer.username || "-";
+                            
+                            const message = `Halo ${branchName}, pesanan Anda telah dibuat oleh Admin Pusat dengan nomor Invoice #${invoiceNumber}.\n\n` +
+                                `Status: ${manualStatus === "SUCCESS" ? "BERHASIL" : "DIPROSES"}\n` +
+                                `Total: Rp ${totalAmount.toLocaleString('id-ID')}\n\n` +
+                                `Silakan cek detailnya di dashboard ShoshaMart.`;
+                            
+                            // If buyer has phone, send notification
+                            if (buyer.phone) {
+                                // Ensure phone is in international format or handle accordingly
+                                const phone = buyer.phone.replace(/\D/g, '');
+                                const formattedPhone = phone.startsWith('0') ? '62' + phone.slice(1) : phone;
+                                await sendWhatsappReminder(formattedPhone, message);
+                            }
+                        }
+                    } catch (error) {
+                        console.error("[WhatsApp Notification] Error in background task:", error);
+                    }
+                })();
+            });
+
+            revalidatePath("/dashboard/superadmin");
+            revalidatePath("/dashboard/buyer/orders");
+            return { success: true, message: "Pesanan berhasil dibuat atas nama Buyer!" };
+        } catch (error: any) {
+            console.error("Failed to create order on behalf:", error);
+            return { success: false, error: error.message || "Gagal membuat pesanan." };
+        }
+    })(), 8000);
 }
 
 export async function submitOrder(
     buyerId: string,
     tierId: string,
     cartItems: { productId: string; quantity: number; priceAtPurchase: number }[],
-    manualDate?: number
+    manualDate?: number,
+    buyerNote?: string
 ) {
-    if (!cartItems || cartItems.length === 0) {
-        return { error: "Keranjang kosong" };
-    }
+    return await withTimeout((async () => {
+        if (!cartItems || cartItems.length === 0) {
+            return { error: "Keranjang kosong" };
+        }
 
-    try {
-        await db.transaction(async (tx) => {
-            // 1. Verify stock for all items
-            for (const item of cartItems) {
-                const productData = await tx.select({ stock: products.stock, name: products.name })
-                    .from(products)
-                    .where(eq(products.id, item.productId));
+        try {
+            await db.transaction(async (tx) => {
+                // 1. Verify stock for all items
+                for (const item of cartItems) {
+                    const productData = await tx.select({ stock: products.stock, name: products.name })
+                        .from(products)
+                        .where(eq(products.id, item.productId));
 
-                if (productData.length === 0) {
-                    throw new Error(`Produk tidak ditemukan`);
+                    if (productData.length === 0) {
+                        throw new Error(`Produk tidak ditemukan`);
+                    }
+
+                    if (productData[0].stock < item.quantity) {
+                        throw new Error(`Stok produk ${productData[0].name} tidak mencukupi (Sisa: ${productData[0].stock})`);
+                    }
                 }
 
-                if (productData[0].stock < item.quantity) {
-                    throw new Error(`Stok produk ${productData[0].name} tidak mencukupi (Sisa: ${productData[0].stock})`);
+                // 2. Insert order header
+                const totalAmount = cartItems.reduce(
+                    (sum, item) => sum + item.priceAtPurchase * item.quantity,
+                    0
+                );
+
+                const [newOrder] = await tx
+                    .insert(orders)
+                    .values({
+                        buyerId,
+                        tierId,
+                        totalAmount,
+                        status: "PENDING_APPROVAL",
+                        buyerNote,
+                        ...(manualDate ? { createdAt: manualDate } : {}) // Inject manual date if present
+                    })
+                    .returning();
+
+                // 3. Insert order items
+                const itemsToInsert = cartItems.map((item) => ({
+                    orderId: newOrder.id,
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    priceAtPurchase: item.priceAtPurchase,
+                }));
+
+                await tx.insert(orderItems).values(itemsToInsert);
+
+                // 4. Deduct stock
+                for (const item of cartItems) {
+                    await tx.update(products)
+                        .set({ stock: sql`${products.stock} - ${item.quantity}` })
+                        .where(eq(products.id, item.productId));
                 }
-            }
 
-            // 2. Insert order header
-            const totalAmount = cartItems.reduce(
-                (sum, item) => sum + item.priceAtPurchase * item.quantity,
-                0
-            );
-
-            const [newOrder] = await tx
-                .insert(orders)
-                .values({
-                    buyerId,
-                    tierId,
-                    totalAmount,
-                    status: "PENDING_APPROVAL",
-                    ...(manualDate ? { createdAt: manualDate } : {}) // Inject manual date if present
-                })
-                .returning();
-
-            // 3. Insert order items
-            const itemsToInsert = cartItems.map((item) => ({
-                orderId: newOrder.id,
-                productId: item.productId,
-                quantity: item.quantity,
-                priceAtPurchase: item.priceAtPurchase,
-            }));
-
-            await tx.insert(orderItems).values(itemsToInsert);
-
-            // 4. Deduct stock
-            for (const item of cartItems) {
-                await tx.update(products)
-                    .set({ stock: sql`${products.stock} - ${item.quantity}` })
-                    .where(eq(products.id, item.productId));
-            }
-
-            // 5. Send WhatsApp Reminder (async, don't await so it doesn't block)
-            // We fetch the buyer info here because we are still within the transaction/action scope
-            // but we'll run the actual fetch call in a separate try-catch to not fail the order.
-            (async () => {
-                try {
-                    const buyer = await db.query.users.findFirst({
-                        where: eq(users.id, buyerId),
-                    });
-
-                    if (buyer) {
-                        const invoiceNumber = newOrder.id.split("-")[0].toUpperCase();
-                        const dateStr = format(new Date(), "dd MMMM yyyy HH:mm", { locale: id });
-                        const branchName = buyer.branchName || "-";
-                        
-                        // Fetch product names for the reminder
-                        const productIds = cartItems.map(i => i.productId);
-                        const fetchedProducts = await db.query.products.findMany({
-                            where: inArray(products.id, productIds)
+                // 5. Send WhatsApp Reminder (async, don't await so it doesn't block)
+                (async () => {
+                    try {
+                        const buyer = await db.query.users.findFirst({
+                            where: eq(users.id, buyerId),
                         });
 
-                        const itemLines = cartItems.map(item => {
-                            const p = fetchedProducts.find(fp => fp.id === item.productId);
-                            return `- ${p?.name || "Produk"}: ${item.quantity} ${p?.unit || "Pcs"}`;
-                        }).join("\n");
+                        if (buyer) {
+                            const invoiceNumber = newOrder.id.split("-")[0].toUpperCase();
+                            const dateStr = format(new Date(), "dd MMMM yyyy HH:mm", { locale: id });
+                            const branchName = buyer.branchName || "-";
+                            
+                            // Fetch product names for the reminder
+                            const productIds = cartItems.map(i => i.productId);
+                            const fetchedProducts = await db.query.products.findMany({
+                                where: inArray(products.id, productIds)
+                            });
 
-                        const message = `*PESANAN BARU TERIMA - SHOSHA MART*\n\n` +
-                            `No. Invoice: #${invoiceNumber}\n` +
-                            `Tanggal: ${dateStr}\n` +
-                            `Cabang: ${branchName} (${buyer.username})\n\n` +
-                            `*Daftar Barang:*\n${itemLines}\n\n` +
-                            `*Total Pembelian: Rp ${totalAmount.toLocaleString('id-ID')}*\n\n` +
-                            `Mohon Admin segera cek pesanan di dashboard:\n` +
-                            `https://shosha-mart-plum.vercel.app/dashboard/\n\n` +
-                            `Terima kasih.`;
-                        
-                        // Send to the specified Group ID
-                        const groupId = "120363042860463569@g.us";
-                        await sendWhatsappReminder(groupId, message);
+                            const itemLines = cartItems.map(item => {
+                                const p = fetchedProducts.find(fp => fp.id === item.productId);
+                                return `- ${p?.name || "Produk"}: ${item.quantity} ${p?.unit || "Pcs"}`;
+                            }).join("\n");
+
+                            const message = `*PESANAN BARU TERIMA - SHOSHA MART*\n\n` +
+                                `No. Invoice: #${invoiceNumber}\n` +
+                                `Tanggal: ${dateStr}\n` +
+                                `Cabang: ${branchName} (${buyer.username})\n\n` +
+                                `*Daftar Barang:*\n${itemLines}\n\n` +
+                                `*Total Pembelian: Rp ${totalAmount.toLocaleString('id-ID')}*\n` +
+                                (buyerNote ? `*Catatan: ${buyerNote}*\n` : "") + "\n" +
+                                `Mohon Admin segera cek pesanan di dashboard:\n` +
+                                `https://shosha-mart-plum.vercel.app/dashboard/\n\n` +
+                                `Terima kasih.`;
+                            
+                            // Send to the specified Group ID
+                            const groupId = "120363042860463569@g.us";
+                            await sendWhatsappReminder(groupId, message);
+                        }
+                    } catch (error) {
+                        console.error("[WhatsApp Reminder] Error in background task:", error);
                     }
-                } catch (error) {
-                    console.error("[WhatsApp Reminder] Error in background task:", error);
-                }
-            })();
-        });
+                })();
+            });
 
-        revalidatePath("/dashboard/buyer");
-        return { success: true, message: "Pesanan berhasil dibuat!" };
-    } catch (error: any) {
-        console.error("Failed to submit order:", error);
-        return { success: false, error: error.message || "Gagal membuat pesanan." };
-    }
+            revalidatePath("/dashboard/buyer");
+            return { success: true, message: "Pesanan berhasil dibuat!" };
+        } catch (error: any) {
+            console.error("Failed to submit order:", error);
+            return { success: false, error: error.message || "Gagal membuat pesanan." };
+        }
+    })(), 8000);
 }
 
 export async function approveOrder(orderId: string) {
@@ -610,7 +631,9 @@ export async function getUserOrderHistory(userId: string) {
 
 export async function updateOrderItems(
     orderId: string,
-    newItems: { productId: string; quantity: number; priceAtPurchase: number }[]
+    newItems: { productId: string; quantity: number; priceAtPurchase: number }[],
+    buyerNote?: string | null,
+    adminNotes?: string | null
 ) {
     try {
         const session = await getSession();
@@ -666,7 +689,11 @@ export async function updateOrderItems(
             // 6. Update order total amount
             const newTotalAmount = newItems.reduce((sum, item) => sum + (item.quantity * item.priceAtPurchase), 0);
             await tx.update(orders)
-                .set({ totalAmount: newTotalAmount })
+                .set({ 
+                    totalAmount: newTotalAmount,
+                    buyerNote: buyerNote !== undefined ? buyerNote : undefined,
+                    adminNotes: adminNotes !== undefined ? adminNotes : undefined
+                })
                 .where(eq(orders.id, orderId));
 
             revalidatePath("/dashboard/superadmin");

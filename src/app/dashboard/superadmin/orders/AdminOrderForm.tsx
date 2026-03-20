@@ -26,6 +26,7 @@ import { getProductsForBuyer } from "@/app/actions/products";
 import { toast } from "sonner";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { Textarea } from "@/components/ui/textarea";
 
 type Buyer = {
     id: string;
@@ -56,6 +57,7 @@ export function AdminOrderForm({ buyers }: { buyers: Buyer[] }) {
     const [isSaving, setIsSaving] = useState(false);
     const [orderStatus, setOrderStatus] = useState<"SUCCESS" | "PROCESSED">("SUCCESS");
     const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [buyerNote, setBuyerNote] = useState("");
     
     const router = useRouter();
 
@@ -68,6 +70,7 @@ export function AdminOrderForm({ buyers }: { buyers: Buyer[] }) {
             setSearchTerm("");
             setSearchResults([]);
             setSelectedDate(new Date().toISOString().split('T')[0]);
+            setBuyerNote("");
         }
     }, [open]);
 
@@ -182,7 +185,8 @@ export function AdminOrderForm({ buyers }: { buyers: Buyer[] }) {
                 priceAtPurchase: i.priceAtPurchase
             })),
             orderStatus,
-            selectedDate ? new Date(selectedDate).getTime() : undefined
+            selectedDate ? new Date(selectedDate).getTime() : undefined,
+            buyerNote
         );
 
         if (res.success) {
@@ -247,6 +251,15 @@ export function AdminOrderForm({ buyers }: { buyers: Buyer[] }) {
                                 value={selectedDate} 
                                 onChange={(e) => setSelectedDate(e.target.value)}
                                 className="h-11 border-neutral-300"
+                            />
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                            <Label className="font-bold">Catatan Buyer (Opsional)</Label>
+                            <Textarea 
+                                placeholder="Pesan khusus dari buyer..." 
+                                value={buyerNote} 
+                                onChange={(e) => setBuyerNote(e.target.value)}
+                                className="resize-none"
                             />
                         </div>
                     </div>

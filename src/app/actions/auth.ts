@@ -46,6 +46,7 @@ export async function login(prevState: ActionState | null, formData: FormData): 
         username: user.username,
         role: user.role,
         tierId: user.tierId,
+        hasCompletedTour: user.hasCompletedTour,
     });
 
     // Redirect based on role

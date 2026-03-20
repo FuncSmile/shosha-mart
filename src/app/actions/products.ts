@@ -2,9 +2,10 @@
 
 import { db } from "@/lib/db";
 import { products, tierPrices, tiers } from "@/lib/db/schema";
-import { eq, and, or, isNull, sql, desc } from "drizzle-orm";
+import { eq, and, or, isNull, sql, desc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import * as xlsx from "xlsx";
+import { withTimeout } from "@/lib/utils/timeout";
 
 export async function getProductsForBuyer(tierId: string, page: number = 1, limit: number = 10, search?: string) {
     try {
@@ -217,113 +218,122 @@ export async function downloadProductTemplate() {
 }
 
 export async function importProducts(formData: FormData) {
-    try {
-        const file = formData.get("file") as File;
-        if (!file) {
-            return { success: false, error: "File tidak ditemukan." };
-        }
+    return await withTimeout((async () => {
+        try {
+            const file = formData.get("file") as File;
+            if (!file) {
+                return { success: false, error: "File tidak ditemukan." };
+            }
 
-        // 5MB limit
-        if (file.size > 5 * 1024 * 1024) {
-            return { success: false, error: "Ukuran file terlalu besar (Maksimal 5MB)." };
-        }
+            if (file.size > 5 * 1024 * 1024) {
+                return { success: false, error: "Ukuran file terlalu besar (Maksimal 5MB)." };
+            }
 
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const wb = xlsx.read(buffer, { type: "buffer" });
-        const wsName = wb.SheetNames[0];
-        const ws = wb.Sheets[wsName];
+            const buffer = Buffer.from(await file.arrayBuffer());
+            const wb = xlsx.read(buffer, { type: "buffer" });
+            const ws = wb.Sheets[wb.SheetNames[0]];
 
-        // Convert sheet to JSON array
-        const data = xlsx.utils.sheet_to_json(ws);
-        if (!data || data.length === 0) {
-            return { success: false, error: "File Excel kosong." };
-        }
+            const data = xlsx.utils.sheet_to_json(ws);
+            if (!data || data.length === 0) {
+                return { success: false, error: "File Excel kosong." };
+            }
 
-        const allTiers = await db.select().from(tiers);
-
-        // Transaction for Upsert
-        return await db.transaction(async (tx) => {
-            let imported = 0;
-            let updated = 0;
-
-            for (let i = 0; i < data.length; i++) {
-                const row = data[i] as any;
-                const name = row["Nama Produk"];
-                const sku = row["SKU"];
-                const unit = row["Satuan (Unit)"] || "Pcs";
-                const stock = Number(row["Stok"]) || 0;
-                const basePrice = Number(row["Harga Dasar"]);
-
-                // Validation
-                if (!name || typeof name !== "string" || name.trim() === "") {
-                    throw new Error(`Baris ${i + 2}: Nama Produk tidak boleh kosong.`);
+            // 1. Pre-fetch Tiers
+            const allTiers = await db.select().from(tiers);
+            
+            // 2. Collect all SKUs for pre-fetching existing products
+            const skus = Array.from(new Set(data.map((row: any) => row["SKU"]).filter(Boolean)));
+            
+            // 3. Batch fetch existing products using inArray
+            let existingProducts: { id: string, sku: string }[] = [];
+            if (skus.length > 0) {
+                // Split into chunks if SKUs are more than 999 (SQLite limit)
+                const chunkSize = 900;
+                for (let i = 0; i < skus.length; i += chunkSize) {
+                    const chunk = skus.slice(i, i + chunkSize);
+                    const batch = await db.select({ id: products.id, sku: products.sku })
+                        .from(products)
+                        .where(inArray(products.sku, chunk));
+                    existingProducts = [...existingProducts, ...batch];
                 }
-                if (!sku || typeof sku !== "string" || sku.trim() === "") {
-                    throw new Error(`Baris ${i + 2}: SKU tidak boleh kosong.`);
-                }
-                if (isNaN(basePrice)) {
-                    throw new Error(`Baris ${i + 2}: Harga Dasar tidak valid.`);
-                }
+            }
+            
+            const productMap = new Map(existingProducts.map(p => [p.sku, p.id]));
 
-                // Check if product exists to determine if it's an update or insert
-                const existingProduct = await tx.select({ id: products.id }).from(products).where(eq(products.sku, sku));
-                let productId: string;
+            return await db.transaction(async (tx) => {
+                let imported = 0;
+                let updated = 0;
+                
+                const productsToUpsert: any[] = [];
+                const tierPricesToUpsert: any[] = [];
 
-                if (existingProduct.length > 0) {
-                    // Update
-                    await tx.update(products)
-                        .set({ name, unit, stock, basePrice, deletedAt: null }) // Restore if it was soft-deleted
-                        .where(eq(products.sku, sku));
-                    productId = existingProduct[0].id;
-                    updated++;
-                } else {
-                    // Insert
-                    const inserted = await tx.insert(products)
-                        .values({ name, sku, unit, stock, basePrice })
-                        .returning({ id: products.id });
-                    productId = inserted[0].id;
-                    imported++;
-                }
+                // 4. Process data in memory
+                for (let i = 0; i < data.length; i++) {
+                    const row = data[i] as any;
+                    const name = row["Nama Produk"];
+                    const sku = row["SKU"];
+                    const unit = row["Satuan (Unit)"] || "Pcs";
+                    const stock = Number(row["Stok"]) || 0;
+                    const basePrice = Number(row["Harga Dasar"]);
 
-                // Process Tiers
-                for (const tier of allTiers) {
-                    const priceCol = `Harga ${tier.name}`;
-                    if (row[priceCol] !== undefined && row[priceCol] !== "") {
-                        const price = Number(row[priceCol]);
-                        if (!isNaN(price)) {
-                            // Check existing tier price
-                            const existingTierPrice = await tx.select({ id: tierPrices.id })
-                                .from(tierPrices)
-                                .where(
-                                    and(
-                                        eq(tierPrices.productId, productId),
-                                        eq(tierPrices.tierId, tier.id)
-                                    )
-                                );
+                    if (!name || !sku || isNaN(basePrice)) continue;
 
-                            if (existingTierPrice.length > 0) {
-                                await tx.update(tierPrices)
-                                    .set({ price, isActive: true })
-                                    .where(eq(tierPrices.id, existingTierPrice[0].id));
-                            } else {
-                                await tx.insert(tierPrices)
-                                    .values({ productId, tierId: tier.id, price, isActive: true });
+                    let productId = productMap.get(sku);
+
+                    if (productId) {
+                        // Prepare Update
+                        await tx.update(products)
+                            .set({ name, unit, stock, basePrice, deletedAt: null })
+                            .where(eq(products.sku, sku));
+                        updated++;
+                    } else {
+                        // Prepare Insert
+                        const [inserted] = await tx.insert(products)
+                            .values({ name, sku, unit, stock, basePrice })
+                            .returning({ id: products.id });
+                        productId = inserted.id;
+                        productMap.set(sku, productId);
+                        imported++;
+                    }
+
+                    // Prepare Tier Prices
+                    for (const tier of allTiers) {
+                        const priceCol = `Harga ${tier.name}`;
+                        if (row[priceCol] !== undefined && row[priceCol] !== "") {
+                            const price = Number(row[priceCol]);
+                            if (!isNaN(price)) {
+                                // Collect for bulk upsert of tier prices
+                                // Since SQLite doesn't have a clean multi-row upsert with different conditions for all rows easily via Drizzle yet
+                                // we'll batch them manually or use a transaction with individual upserts
+                                const existingTP = await tx.select({ id: tierPrices.id })
+                                    .from(tierPrices)
+                                    .where(and(eq(tierPrices.productId, productId), eq(tierPrices.tierId, tier.id)))
+                                    .limit(1);
+
+                                if (existingTP.length > 0) {
+                                    await tx.update(tierPrices)
+                                        .set({ price, isActive: true })
+                                        .where(eq(tierPrices.id, existingTP[0].id));
+                                } else {
+                                    await tx.insert(tierPrices)
+                                        .values({ productId, tierId: tier.id, price, isActive: true });
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            revalidatePath("/dashboard/superadmin/products");
-            return {
-                success: true,
-                message: `Berhasil mengimport ${imported} barang, memperbarui ${updated} barang, dan 0 gagal.`
-            };
-        });
+                revalidatePath("/dashboard/superadmin/products");
+                return {
+                    success: true,
+                    message: `Berhasil mengimport ${imported} barang, memperbarui ${updated} barang.`
+                };
+            });
 
-    } catch (error: any) {
-        console.error("Failed to import products:", error);
-        return { success: false, error: error.message || "Gagal mengimport produk." };
-    }
+        } catch (error: any) {
+            console.error("Failed to import products:", error);
+            return { success: false, error: error.message || "Gagal mengimport produk." };
+        }
+    })(), 8000);
 }
 

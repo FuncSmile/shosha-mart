@@ -31,6 +31,7 @@ async function main() {
             phone: '08111111111',
             password: defaultPassword,
             role: 'SUPERADMIN',
+            hasCompletedTour: false,
         },
         {
             username: 'admin_l24j',
@@ -38,6 +39,7 @@ async function main() {
             password: defaultPassword,
             role: 'ADMIN_TIER',
             tierId: l24jTier.id,
+            hasCompletedTour: false,
         },
         {
             username: 'admin_shosha',
@@ -45,6 +47,7 @@ async function main() {
             password: defaultPassword,
             role: 'ADMIN_TIER',
             tierId: shoshaTier.id,
+            hasCompletedTour: false,
         },
         {
             username: 'buyer_l24j',
@@ -53,6 +56,7 @@ async function main() {
             role: 'BUYER',
             tierId: l24jTier.id,
             branchName: 'L24J Branch 1',
+            hasCompletedTour: false,
         },
         {
             username: 'buyer_shosha',
@@ -61,6 +65,7 @@ async function main() {
             role: 'BUYER',
             tierId: shoshaTier.id,
             branchName: 'SHOSHA Branch 1',
+            hasCompletedTour: false,
         },
     ]);
 

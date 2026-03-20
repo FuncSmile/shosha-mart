@@ -40,6 +40,7 @@ type OrderRow = {
     branchName: string | null;
     buyerPhone: string | null;
     createdAt: Date | string | number | null;
+    buyerNote?: string | null;
     adminNotes?: string | null;
     tierId: string;
     items: OrderItemDetail[];
@@ -196,6 +197,11 @@ export default function FulfillmentClient({ orders }: { orders: OrderRow[] }) {
                                 </Badge>
 
                             </div>
+                            {order.buyerNote && (
+                                <div className="flex items-center text-xs bg-amber-50 text-amber-800 px-3 py-1.5 rounded-md border border-amber-100 max-w-md">
+                                    <span className="font-bold mr-1 shrink-0">Note Buyer:</span> {order.buyerNote}
+                                </div>
+                            )}
                             {order.adminNotes && (
                                 <div className="flex items-center text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
                                     <AlertTriangle className="w-3 h-3 mr-1" />
@@ -356,6 +362,8 @@ export default function FulfillmentClient({ orders }: { orders: OrderRow[] }) {
                     imageUrl: item.imageUrl
                 }))}
                 tierId={editingOrder?.tierId || ""}
+                initialBuyerNote={editingOrder?.buyerNote || ""}
+                initialAdminNotes={editingOrder?.adminNotes || ""}
             />
         </div>
     );
