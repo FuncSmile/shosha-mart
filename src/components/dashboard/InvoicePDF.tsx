@@ -316,7 +316,7 @@ export const InvoicePDF = ({ order, paperSize = 'full' }: InvoiceProps) => {
                 
                 {/* Buyer Note if exists */}
                 {order.buyerNote && (
-                    <View style={{ marginTop: 5, padding: 5, backgroundColor: "#f9f9f9", border: 1, borderColor: "#000", borderStyle: "dashed" }}>
+                    <View style={{ marginTop: 5, padding: 5, backgroundColor: "#f9f9f9", borderWidth: 1, borderColor: "#000", borderStyle: "dashed" }}>
                         <Text style={{ fontSize: 8, fontStyle: "italic" }}>
                             Catatan Buyer: {order.buyerNote}
                         </Text>
