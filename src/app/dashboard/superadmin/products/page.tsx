@@ -17,9 +17,9 @@ export default async function ProductsPage(
     const { products, totalCount } = await getAllProducts(page, 10, search);
 
     return (
-        <div className="container mx-auto py-8 px-4">
-            <div className="flex justify-between items-center mb-8">
-                <h1 className="text-3xl font-bold">Manajemen Produk</h1>
+        <div className="container mx-auto py-2 px-2">
+            <div className="flex justify-between items-center mb-4">
+                <h1 className="text-2xl font-bold text-neutral-800">Manajemen Produk</h1>
             </div>
             <ProductList
                 initialProducts={products}
