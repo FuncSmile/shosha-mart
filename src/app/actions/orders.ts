@@ -704,3 +704,142 @@ export async function updateOrderItems(
         return { success: false, error: error.message || "Gagal memperbarui pesanan." };
     }
 }
+
+export async function updateOrderAsBuyer(
+    orderId: string,
+    newItems: { productId: string; quantity: number; priceAtPurchase: number }[],
+    buyerNote?: string | null
+) {
+    try {
+        const session = await getSession();
+        if (!session || session.role !== "BUYER") {
+            return { success: false, error: "Akses ditolak." };
+        }
+
+        return await db.transaction(async (tx) => {
+            // Verifikasi kepemilikan
+            const existingOrder = await tx.select()
+                .from(orders)
+                .where(and(eq(orders.id, orderId), eq(orders.buyerId, session.id)));
+            
+            if (existingOrder.length === 0) {
+                return { success: false, error: "Pesanan tidak ditemukan atau Anda tidak memiliki akses." };
+            }
+
+            if (existingOrder[0].status !== "PENDING_APPROVAL") {
+                return { success: false, error: "Hanya pesanan berstatus 'Menunggu Persetujuan' yang bisa diubah." };
+            }
+
+            // 1. Get existing items 
+            const existingItems = await tx.select()
+                .from(orderItems)
+                .where(eq(orderItems.orderId, orderId));
+
+            // 2. Restore all old stock first
+            for (const item of existingItems) {
+                await tx.update(products)
+                    .set({ stock: sql`${products.stock} + ${item.quantity}` })
+                    .where(eq(products.id, item.productId));
+            }
+
+            // 3. Delete old items
+            await tx.delete(orderItems).where(eq(orderItems.orderId, orderId));
+
+            // 4. Validate and deduct new stock
+            for (const item of newItems) {
+                const productData = await tx.select({ stock: products.stock, name: products.name })
+                    .from(products)
+                    .where(eq(products.id, item.productId));
+
+                if (productData.length === 0) {
+                    throw new Error(`Produk tidak ditemukan`);
+                }
+
+                if (productData[0].stock < item.quantity) {
+                    throw new Error(`Stok produk ${productData[0].name} tidak mencukupi (Sisa: ${productData[0].stock})`);
+                }
+
+                await tx.update(products)
+                    .set({ stock: sql`${products.stock} - ${item.quantity}` })
+                    .where(eq(products.id, item.productId));
+            }
+
+            // 5. Insert new items
+            if (newItems.length > 0) {
+                await tx.insert(orderItems).values(
+                    newItems.map(item => ({
+                        orderId,
+                        productId: item.productId,
+                        quantity: item.quantity,
+                        priceAtPurchase: item.priceAtPurchase
+                    }))
+                );
+            } else {
+                 throw new Error("Pesanan tidak boleh kosong.");
+            }
+
+            // 6. Update order total amount
+            const newTotalAmount = newItems.reduce((sum, item) => sum + (item.quantity * item.priceAtPurchase), 0);
+            await tx.update(orders)
+                .set({ 
+                    totalAmount: newTotalAmount,
+                    buyerNote: buyerNote !== undefined ? buyerNote : undefined
+                    // adminNotes is INTENTIONALLY omitted so buyer cannot change it
+                })
+                .where(eq(orders.id, orderId));
+
+            revalidatePath("/dashboard/buyer/orders");
+            return { success: true, message: "Pesanan berhasil direvisi!" };
+        });
+    } catch (error: any) {
+        console.error("Failed to update order as buyer:", error);
+        return { success: false, error: error.message || "Gagal merevisi pesanan." };
+    }
+}
+
+export async function cancelOrderAsBuyer(orderId: string) {
+    try {
+        const session = await getSession();
+        if (!session || session.role !== "BUYER") {
+            return { success: false, error: "Akses ditolak." };
+        }
+
+        return await db.transaction(async (tx) => {
+            // Verifikasi
+            const existingOrder = await tx.select()
+                .from(orders)
+                .where(and(eq(orders.id, orderId), eq(orders.buyerId, session.id)));
+            
+            if (existingOrder.length === 0) {
+                return { success: false, error: "Pesanan tidak ditemukan atau Anda tidak memiliki akses." };
+            }
+
+            if (existingOrder[0].status !== "PENDING_APPROVAL") {
+                return { success: false, error: "Hanya pesanan berstatus 'Menunggu Persetujuan' yang bisa dibatalkan." };
+            }
+
+            // Restore stock
+            const items = await tx.select({ productId: orderItems.productId, quantity: orderItems.quantity })
+                .from(orderItems)
+                .where(eq(orderItems.orderId, orderId));
+
+            for (const item of items) {
+                await tx.update(products)
+                    .set({ stock: sql`${products.stock} + ${item.quantity}` })
+                    .where(eq(products.id, item.productId));
+            }
+
+            // Delete order items
+            await tx.delete(orderItems).where(eq(orderItems.orderId, orderId));
+
+            // Delete order 
+            await tx.delete(orders).where(eq(orders.id, orderId));
+            
+            revalidatePath("/dashboard/buyer/orders");
+            return { success: true, message: "Pesanan berhasil dibatalkan dan dihapus." };
+        });
+    } catch (error: any) {
+        console.error("Failed to cancel order as buyer:", error);
+        return { success: false, error: error.message || "Gagal membatalkan pesanan." };
+    }
+}

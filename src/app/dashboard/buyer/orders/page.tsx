@@ -11,6 +11,7 @@ import { Search } from "lucide-react";
 
 import OrderDetail from "@/components/dashboard/OrderDetail";
 import ReorderButton from "./ReorderButton";
+import BuyerOrderActions from "./BuyerOrderActions";
 
 export default async function BuyerOrdersPage(
     props: { searchParams?: Promise<{ [key: string]: string | string[] | undefined }> }
@@ -55,6 +56,7 @@ export default async function BuyerOrdersPage(
             imageUrl: item.product?.imageUrl || null,
             quantity: item.quantity,
             price: item.priceAtPurchase,
+            priceAtPurchase: item.priceAtPurchase,
             stock: item.product?.stock || 0,
         })),
     }));
@@ -115,7 +117,16 @@ export default async function BuyerOrdersPage(
                                 <div className="text-right">
                                     <div className="text-[10px] text-neutral-400 uppercase tracking-wider">Total Pembayaran</div>
                                     <div className="text-xl font-bold text-blue-700">Rp {order.totalAmount.toLocaleString("id-ID")}</div>
-                                    <div className="mt-2">
+                                    <div className="mt-2 flex gap-2 justify-end">
+                                        {order.status === "PENDING_APPROVAL" && (
+                                            <BuyerOrderActions 
+                                                orderId={order.id} 
+                                                status={order.status} 
+                                                initialItems={order.items} 
+                                                tierId={session.tierId || ""} 
+                                                initialBuyerNote={order.buyerNote || undefined} 
+                                            />
+                                        )}
                                         <ReorderButton items={order.items} />
                                     </div>
                                 </div>
